@@ -1,0 +1,17 @@
+{{IMPORTS}}
+import AutoformalizationEval
+
+set_option autoImplicit false
+set_option maxHeartbeats {{HEARTBEATS}}
+
+{{CONTEXT}}
+
+def cand : Prop :=
+{{CAND}}
+
+def expected : Prop :=
+{{EXPECTED}}
+
+autoform_check "{{FAMILY}}" "{{CHECK_KEY}}"
+
+def test2_ok : True := True.intro

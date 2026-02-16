@@ -1,0 +1,42 @@
+# Autoformalization Eval Suite (v1 bootstrap)
+
+This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a two-stage check:
+
+1. **Test 1**: candidate elaborates as `Prop`
+2. **Test 2**: deterministic semantic check (shape guard + family checker)
+
+## What v1 measures
+- Model ability to output well-formed Lean `Prop` terms from natural language.
+- Model ability to preserve semantics under deterministic family-specific checks.
+
+## What v1 does not measure
+- Proof generation quality.
+- Broad theorem-proving search success.
+
+## Why trivial outputs should fail
+- Output contract rejects command-like outputs and `by`/`sorry`.
+- Shape guard enforces structural compatibility with reference propositions.
+- Family checks compare meaning in deterministic, restricted fragments.
+- Validator runs mutation checks to ensure non-triviality.
+
+## Quickstart
+```bash
+./scripts/setup.sh
+```
+
+Then:
+```bash
+cd harness
+python -m autoform_eval.cli validate --split pilot
+```
+
+## Pinned environment
+- Lean toolchain: see `lean/lean-toolchain`
+- mathlib revision: see `lean/lakefile.lean`
+
+## Project docs
+- Full plan: `docs/plan_v1.md`
+- Protocol: `docs/protocol.md`
+- Threat model: `docs/threat_model.md`
+- Add item guide: `docs/add_item.md`
+- Families overview: `docs/families.md`

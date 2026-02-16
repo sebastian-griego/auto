@@ -1,0 +1,12 @@
+{{IMPORTS}}
+import AutoformalizationEval
+
+set_option autoImplicit false
+set_option maxHeartbeats {{HEARTBEATS}}
+
+{{CONTEXT}}
+
+def cand : Prop :=
+{{CAND}}
+
+def test1_ok : True := True.intro

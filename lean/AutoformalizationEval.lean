@@ -1,0 +1,5 @@
+import AutoformalizationEval.Version
+import AutoformalizationEval.Checks
+import AutoformalizationEval.Families.RingIdentity
+import AutoformalizationEval.Families.FinTruthTable
+import AutoformalizationEval.Families.SetEquality
