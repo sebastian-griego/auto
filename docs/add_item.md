@@ -32,7 +32,9 @@
 - Choose `semantic.kind` and `semantic.check` consistent with the family.
 - Fill provenance fields for every row.
 - For `fin_truth_table`, include an `enum_cap:<N>` tag and keep `N <= 256`.
-- For `fin_truth_table`, the current deterministic checker supports leading binders over `Bool` and concrete `Fin n`.
+- For `fin_truth_table`, the deterministic checker supports leading binders over `Bool`, concrete `Fin n`, and small nullary enum inductives declared in `context`.
+- For `fin_truth_table`, set `enum_cap` to the assignment product of leading finite binders when possible.
+- For enum binders, keep constructors nullary and small enough that full assignment product remains under the cap.
 
 ## Common mistakes
 - Missing nested `semantic` or `provenance` fields.

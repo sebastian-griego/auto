@@ -26,3 +26,40 @@ jobs:
         run: |
           cd harness
           python -m autoform_eval.cli validate --split pilot
+
+      - name: Determinism smoke validate (mixed subset)
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          src = Path("dataset/pilot.jsonl")
+          rows = [json.loads(line) for line in src.read_text(encoding="utf-8").splitlines() if line.strip()]
+          keep = {
+              "pilot_ring_001",
+              "pilot_ring_005",
+              "pilot_ring_010",
+              "pilot_ring_014",
+              "pilot_fintruth_001",
+              "pilot_fintruth_005",
+              "pilot_fintruth_013",
+              "pilot_fintruth_016",
+          }
+          out_dir = Path("/tmp/auto_det_dataset")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          selected = [r for r in rows if r["id"] in keep]
+          (out_dir / "pilot.jsonl").write_text(
+              "\\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\\n",
+              encoding="utf-8",
+          )
+          (out_dir / "dev.jsonl").write_text("", encoding="utf-8")
+          (out_dir / "test.jsonl").write_text("", encoding="utf-8")
+          print(f"determinism-smoke rows: {len(selected)}")
+          PY
+
+          cd harness
+          python -m autoform_eval.cli validate \
+            --split pilot \
+            --dataset-dir /tmp/auto_det_dataset \
+            --determinism-repeats 3 \
+            --determinism-jitter-ms 5000

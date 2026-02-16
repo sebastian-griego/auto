@@ -78,9 +78,11 @@ def _run_attempt(
     hb1: int,
     hb2: int,
     mock: bool,
+    save_prompt_text: bool,
 ) -> dict[str, Any]:
     prompt = _build_prompt(item.nl, item.context)
     prompt_hash = stable_hash(prompt)
+    prompt_text = prompt if save_prompt_text else None
 
     cache_key_model = stable_hash(
         json.dumps(
@@ -123,6 +125,13 @@ def _run_attempt(
             "candidate_raw": candidate_raw,
             "candidate_hash": stable_hash(candidate_raw),
             "prompt_hash": prompt_hash,
+            "prompt_text": prompt_text,
+            "test1_rendered_path": "",
+            "test2_rendered_path": "",
+            "test1_stdout_log_path": "",
+            "test1_stderr_log_path": "",
+            "test2_stdout_log_path": "",
+            "test2_stderr_log_path": "",
         }
 
     candidate = parse_res.candidate
@@ -135,6 +144,7 @@ def _run_attempt(
     t1_content = render_test1(lean_dir, item, candidate, hb1)
     t1_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.lean"
     t1_path.write_text(t1_content, encoding="utf-8")
+    t1_rendered_rel = str(t1_path.relative_to(run_dir))
 
     lean_key1 = stable_hash(
         json.dumps(
@@ -175,8 +185,12 @@ def _run_attempt(
             },
         )
 
-    (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log").write_text(t1_stderr, encoding="utf-8")
-    (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log").write_text(t1_stdout, encoding="utf-8")
+    t1_stderr_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
+    t1_stdout_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
+    t1_stderr_path.write_text(t1_stderr, encoding="utf-8")
+    t1_stdout_path.write_text(t1_stdout, encoding="utf-8")
+    t1_stderr_rel = str(t1_stderr_path.relative_to(run_dir))
+    t1_stdout_rel = str(t1_stdout_path.relative_to(run_dir))
 
     if not t1_ok:
         return {
@@ -191,11 +205,19 @@ def _run_attempt(
             "candidate_raw": candidate_raw,
             "candidate_hash": stable_hash(candidate),
             "prompt_hash": prompt_hash,
+            "prompt_text": prompt_text,
+            "test1_rendered_path": t1_rendered_rel,
+            "test2_rendered_path": "",
+            "test1_stdout_log_path": t1_stdout_rel,
+            "test1_stderr_log_path": t1_stderr_rel,
+            "test2_stdout_log_path": "",
+            "test2_stderr_log_path": "",
         }
 
     t2_content = render_test2(lean_dir, item, candidate, hb2)
     t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
     t2_path.write_text(t2_content, encoding="utf-8")
+    t2_rendered_rel = str(t2_path.relative_to(run_dir))
 
     lean_key2 = stable_hash(
         json.dumps(
@@ -236,14 +258,19 @@ def _run_attempt(
             },
         )
 
-    (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log").write_text(t2_stderr, encoding="utf-8")
-    (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log").write_text(t2_stdout, encoding="utf-8")
+    t2_stderr_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
+    t2_stdout_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
+    t2_stderr_path.write_text(t2_stderr, encoding="utf-8")
+    t2_stdout_path.write_text(t2_stdout, encoding="utf-8")
+    t2_stderr_rel = str(t2_stderr_path.relative_to(run_dir))
+    t2_stdout_rel = str(t2_stdout_path.relative_to(run_dir))
 
     bucket = "pass" if t2_ok else classify_failure(t2_stderr, t2_timeout, t2_stdout)
+    t2_text = f"{t2_stderr}\n{t2_stdout}"
     return {
         "test1_pass": True,
         "test2_pass": bool(t2_ok),
-        "shape_pass": None if t2_ok else (False if "[shape_fail]" in t2_stderr else None),
+        "shape_pass": None if t2_ok else (False if "[shape_fail]" in t2_text else None),
         "bucket": bucket,
         "test1_elapsed_ms": t1_elapsed,
         "test2_elapsed_ms": t2_elapsed,
@@ -252,6 +279,13 @@ def _run_attempt(
         "candidate_raw": candidate_raw,
         "candidate_hash": stable_hash(candidate),
         "prompt_hash": prompt_hash,
+        "prompt_text": prompt_text,
+        "test1_rendered_path": t1_rendered_rel,
+        "test2_rendered_path": t2_rendered_rel,
+        "test1_stdout_log_path": t1_stdout_rel,
+        "test1_stderr_log_path": t1_stderr_rel,
+        "test2_stdout_log_path": t2_stdout_rel,
+        "test2_stderr_log_path": t2_stderr_rel,
     }
 
 
@@ -332,6 +366,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         hb1=args.test1_heartbeats,
                         hb2=args.test2_heartbeats,
                         mock=args.mock,
+                        save_prompt_text=args.save_prompt_text,
                     )
                 except Exception as exc:  # noqa: BLE001
                     attempt = {
@@ -346,6 +381,13 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "candidate_raw": "",
                         "candidate_hash": "",
                         "prompt_hash": "",
+                        "prompt_text": None,
+                        "test1_rendered_path": "",
+                        "test2_rendered_path": "",
+                        "test1_stdout_log_path": "",
+                        "test1_stderr_log_path": "",
+                        "test2_stdout_log_path": "",
+                        "test2_stderr_log_path": "",
                     }
 
                 record = {
@@ -357,6 +399,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "tags": item.tags,
                     "provider": provider,
                     "model": model,
+                    "attempt_index": k_index,
                     "params": {"temperature": args.temperature, "max_output_tokens": args.max_output_tokens},
                     "prompt_hash": attempt["prompt_hash"],
                     "candidate_raw": attempt["candidate_raw"],
@@ -373,7 +416,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "test2_elapsed_ms": attempt["test2_elapsed_ms"],
                     "stderr_excerpt": attempt["stderr_excerpt"],
                     "stdout_excerpt": attempt["stdout_excerpt"],
+                    "test1_rendered_path": attempt["test1_rendered_path"],
+                    "test2_rendered_path": attempt["test2_rendered_path"],
+                    "test1_stdout_log_path": attempt["test1_stdout_log_path"],
+                    "test1_stderr_log_path": attempt["test1_stderr_log_path"],
+                    "test2_stdout_log_path": attempt["test2_stdout_log_path"],
+                    "test2_stderr_log_path": attempt["test2_stderr_log_path"],
                 }
+                if attempt["prompt_text"] is not None:
+                    record["prompt_text"] = attempt["prompt_text"]
                 records.append(record)
 
     results_path = run_dir / "results.jsonl"
@@ -445,6 +496,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--mathlib-rev", default=os.getenv("MATHLIB_REV", "unknown"))
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-output-tokens", type=int, default=512)
+    run.add_argument("--save-prompt-text", action="store_true")
     run.add_argument("--test1-heartbeats", type=int, default=40000)
     run.add_argument("--test2-heartbeats", type=int, default=200000)
     run.add_argument("--timeout1", type=float, default=8.0)

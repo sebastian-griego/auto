@@ -12,5 +12,4 @@
 - `ring_identity_norm` currently supports a deterministic restricted grammar:
   binders, natural literals, `+`, `*`, and equation-side symmetry.
 - `fin_truth_table` currently enumerates leading finite binders in a deterministic fragment:
-  `Bool` and concrete `Fin n` binders (with a fixed assignment cap).
-- Extend finite-domain support to small enum types in the next slice.
+  `Bool`, concrete `Fin n`, and small nullary enum inductives (with a fixed assignment cap).

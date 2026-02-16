@@ -24,14 +24,19 @@
 - [x] Mutation gate now requires at least one shape/semantic rejection from an elaborating mutant
 - [x] Lean failure bucketing now scans both stdout and stderr (Lean may emit errors on stdout)
 - [x] `fin_truth_table` extended beyond Bool to deterministic `Fin n` enumeration
-- [x] Pilot split expanded to 10 Tier A rows (including mixed Bool/Fin cases)
+- [x] Pilot split expanded to 30 Tier A rows (ring + Bool/Fin finite-domain cases)
+- [x] Validator supports determinism rerun assertions (`--determinism-repeats`, jitter checks)
+- [x] Validator enforces unique item IDs and split consistency per row
+- [x] `fin_truth_table` supports small enum inductives with nullary constructors
+- [x] Pilot split includes Bool, `Fin n`, and enum finite-domain truth-table rows
+- [x] Reporting upgraded with per-model slices and deterministic Pass@k aggregation
+- [x] Run artifacts now include rendered/log file paths and optional prompt text
 
 ## In Progress
-- [ ] Expand `pilot.jsonl` from 8 bootstrap rows to ~30 curated rows with stronger provenance
-- [ ] Extend finite-domain checker from `Bool`/`Fin n` to small enum fragments
-- [ ] Add determinism checks across repeated validator runs (beyond timeout/budget limits)
+- [ ] Replace synthetic pilot rows with curated provenance-complete rows from public sources
+- [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
 
 ## Next Concrete Slice
-1. Add small enum support to finite truth-table enumeration and tag-based cap checks.
-2. Add rerun-based determinism assertions in validator outputs.
-3. Grow pilot set toward 30 rows with curated provenance (not synthetic placeholders).
+1. Curate and replace synthetic pilot rows with provenance-complete sourced rows.
+2. Add a larger determinism rerun CI gate (beyond current mixed smoke subset).
+3. Add leakage/dedup checks across future dev/test splits.

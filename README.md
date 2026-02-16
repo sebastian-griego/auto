@@ -30,6 +30,12 @@ cd harness
 python -m autoform_eval.cli validate --split pilot
 ```
 
+Run a tiny mock eval:
+```bash
+cd harness
+python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
+```
+
 ## Pinned environment
 - Lean toolchain: see `lean/lean-toolchain`
 - mathlib revision: see `lean/lakefile.lean`

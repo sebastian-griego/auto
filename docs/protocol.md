@@ -21,7 +21,17 @@ python -m autoform_eval.cli run \
 ```
 
 ## Pass@k
-Use `--k <int>` and aggregate combined pass in `summary.json`.
+Use `--k <int>`. `summary.json` now reports deterministic `pass_at_k.rates`
+per model and overall, grouped by `(provider, model, item_id)`.
+
+Example:
+```bash
+cd harness
+python -m autoform_eval.cli run --split pilot --models openai:gpt-5 --k 3
+```
+
+Optional:
+- `--save-prompt-text` records raw prompt text in `results.jsonl`.
 
 ## Validator budgets
 Example:
@@ -29,3 +39,17 @@ Example:
 cd harness
 python -m autoform_eval.cli validate --split pilot --budget1-ms 6000 --budget2-ms 12000
 ```
+
+## Determinism reruns
+The validator can rerun Test2 per item to check deterministic outcomes:
+
+```bash
+cd harness
+python -m autoform_eval.cli validate \
+  --split pilot \
+  --determinism-repeats 2 \
+  --determinism-jitter-ms 3000
+```
+
+- `--determinism-repeats`: number of Test2 reruns per item (>= 1).
+- `--determinism-jitter-ms`: optional elapsed-time jitter cap across reruns.

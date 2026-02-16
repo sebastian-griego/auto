@@ -11,11 +11,13 @@ private def boolTrueExpr : Expr := mkConst ``Bool.true
 private inductive Domain where
   | bool
   | fin (n : Nat)
+  | enum (typeName : Name) (ctors : Array Name)
   deriving BEq
 
 private def domainSize : Domain → Nat
   | .bool => 2
   | .fin n => n
+  | .enum _ ctors => ctors.size
 
 private partial def natLitValue? : Expr → Option Nat
   | .lit (.natVal n) => some n
@@ -46,7 +48,28 @@ private def binderDomain? (ty : Expr) : MetaM (Option Domain) := do
     | some n => return some (.fin n)
     | none => return none
 
-  return none
+  match ty.consumeMData with
+  | .const typeName _ =>
+      let env ← getEnv
+      match env.find? typeName with
+      | some (.inductInfo info) =>
+          if info.numParams != 0 || info.numIndices != 0 then
+            return none
+          if info.ctors.isEmpty || info.ctors.length > 32 then
+            return none
+
+          -- Keep enum support deterministic by requiring all constructors to be nullary.
+          for ctorName in info.ctors do
+            let ctorInfo ← getConstInfo ctorName
+            let hasArgs ← forallTelescopeReducing ctorInfo.type fun ctorXs _ => do
+              pure (!ctorXs.isEmpty)
+            if hasArgs then
+              return none
+
+          return some (.enum typeName info.ctors.toArray)
+      | _ => return none
+  | _ =>
+      return none
 
 private def finitePrefix (binders : Array Expr) : MetaM (Array Domain × Nat) := do
   let mut i := 0
@@ -77,6 +100,8 @@ private def domainValues : Domain → Array Expr
         for k in [0:n] do
           out := out.push (mkApp2 (mkConst ``Fin.ofNat) (mkNatLit predN) (mkNatLit k))
         return out
+  | .enum _ ctors =>
+      ctors.map mkConst
 
 private def appendValues (vals : List Expr) (arr : Array Expr) : List (Array Expr) :=
   vals.map (fun v => arr.push v)
@@ -119,6 +144,7 @@ private def checkAssignment (candFn expectedFn : Expr) (vals : Array Expr) : Met
 Finite truth-table checker for a deterministic fragment over leading binders:
 - `Bool`
 - `Fin n` for concrete small `n`
+- small enum inductives with nullary constructors
 
 This enumerates all assignments and compares `decide` outputs.
 -/
