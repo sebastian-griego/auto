@@ -31,6 +31,7 @@
 - `expected` must be a Lean `Prop` term.
 - Choose `semantic.kind` and `semantic.check` consistent with the family.
 - Fill provenance fields for every row.
+- For `fin_truth_table`, include an `enum_cap:<N>` tag and keep `N <= 256`.
 
 ## Common mistakes
 - Missing nested `semantic` or `provenance` fields.

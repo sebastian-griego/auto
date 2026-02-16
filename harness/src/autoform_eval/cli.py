@@ -183,7 +183,7 @@ def _run_attempt(
             "test1_pass": False,
             "test2_pass": False,
             "shape_pass": None,
-            "bucket": classify_failure(t1_stderr, t1_timeout),
+            "bucket": classify_failure(t1_stderr, t1_timeout, t1_stdout),
             "test1_elapsed_ms": t1_elapsed,
             "test2_elapsed_ms": 0,
             "stdout_excerpt": excerpt(t1_stdout),
@@ -239,7 +239,7 @@ def _run_attempt(
     (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log").write_text(t2_stderr, encoding="utf-8")
     (logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log").write_text(t2_stdout, encoding="utf-8")
 
-    bucket = "pass" if t2_ok else classify_failure(t2_stderr, t2_timeout)
+    bucket = "pass" if t2_ok else classify_failure(t2_stderr, t2_timeout, t2_stdout)
     return {
         "test1_pass": True,
         "test2_pass": bool(t2_ok),
@@ -256,6 +256,8 @@ def _run_attempt(
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    budget1_ms = args.budget1_ms if args.budget1_ms is not None else int(args.timeout1 * 1000)
+    budget2_ms = args.budget2_ms if args.budget2_ms is not None else int(args.timeout2 * 1000)
     try:
         summary = validate_split(
             dataset_dir=Path(args.dataset_dir),
@@ -268,6 +270,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
             test2_heartbeats=args.test2_heartbeats,
             timeout1_s=args.timeout1,
             timeout2_s=args.timeout2,
+            budget1_ms=budget1_ms,
+            budget2_ms=budget2_ms,
         )
     except DatasetError as exc:
         print(f"dataset error: {exc}", file=sys.stderr)
@@ -420,6 +424,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--test2-heartbeats", type=int, default=200000)
     validate.add_argument("--timeout1", type=float, default=8.0)
     validate.add_argument("--timeout2", type=float, default=20.0)
+    validate.add_argument("--budget1-ms", type=int, default=None)
+    validate.add_argument("--budget2-ms", type=int, default=None)
     validate.set_defaults(func=cmd_validate)
 
     run = sub.add_parser("run")

@@ -35,6 +35,13 @@ def checkShape (family : String) (cand expected : Expr) : MetaM Unit := do
     forallTelescopeReducing expected fun expXs expBody => do
       if candXs.size != expXs.size then
         throwShapeFail "binder_arity"
+      for i in [0:candXs.size] do
+        let candDecl ← (candXs.get! i).fvarId!.getDecl
+        let expDecl ← (expXs.get! i).fvarId!.getDecl
+        let expTyMapped :=
+          expDecl.type.replaceFVars (expXs.extract 0 i) (candXs.extract 0 i)
+        unless (← isDefEq candDecl.type expTyMapped) do
+          throwShapeFail s!"binder_type:{i}"
       checkFamilyOuterShape family candBody
       checkFamilyOuterShape family expBody
 
@@ -57,8 +64,18 @@ syntax (name := autoformCheckCmd) "autoform_check" str str : command
         let checkKey := check.getString
         let candInfo ← getConstInfo `cand
         let expectedInfo ← getConstInfo `expected
-        lambdaTelescope candInfo.value! fun _ candExpr => do
-          lambdaTelescope expectedInfo.value! fun _ expectedExpr => do
+        lambdaTelescope candInfo.value! fun candCtx candExpr => do
+          lambdaTelescope expectedInfo.value! fun expCtx expectedExprRaw => do
+            if candCtx.size != expCtx.size then
+              throwError "[shape_fail] context_binder_arity"
+            for i in [0:candCtx.size] do
+              let candDecl ← (candCtx.get! i).fvarId!.getDecl
+              let expDecl ← (expCtx.get! i).fvarId!.getDecl
+              let expTyMapped :=
+                expDecl.type.replaceFVars (expCtx.extract 0 i) (candCtx.extract 0 i)
+              unless (← isDefEq candDecl.type expTyMapped) do
+                throwError s!"[shape_fail] context_binder_type:{i}"
+            let expectedExpr := expectedExprRaw.replaceFVars expCtx candCtx
             checkShape familyName candExpr expectedExpr
             checkFamily checkKey candExpr expectedExpr
   | _ => throwUnsupportedSyntax

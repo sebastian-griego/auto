@@ -49,13 +49,14 @@ def run_lean_file(lean_dir: Path, lean_file: Path, timeout_seconds: float) -> Le
         )
 
 
-def classify_failure(stderr: str, timed_out: bool) -> str:
+def classify_failure(stderr: str, timed_out: bool, stdout: str = "") -> str:
+    text = f"{stderr}\n{stdout}"
     if timed_out:
         return "timeout"
-    if "[shape_fail]" in stderr:
+    if "[shape_fail]" in text:
         return "shape_fail"
-    if "[semantic_fail]" in stderr:
+    if "[semantic_fail]" in text:
         return "semantic_fail"
-    if "expected" in stderr or "unexpected token" in stderr:
+    if "expected" in text or "unexpected token" in text:
         return "lean_parse_fail"
     return "elab_fail"

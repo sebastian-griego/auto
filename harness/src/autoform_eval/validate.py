@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -38,9 +37,47 @@ def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
     return issues
 
 
+def _extract_enum_cap(tags: list[str]) -> int | None:
+    for tag in tags:
+        if not tag.startswith("enum_cap:"):
+            continue
+        value = tag.split(":", 1)[1].strip()
+        if not value.isdigit():
+            return -1
+        return int(value)
+    return None
+
+
+def _dataset_family_issues(item: DatasetItem) -> list[str]:
+    issues: list[str] = []
+    if item.family == "fin_truth_table":
+        enum_cap = _extract_enum_cap(item.tags)
+        if enum_cap is None:
+            issues.append("missing_tag:enum_cap")
+        elif enum_cap < 0:
+            issues.append("invalid_tag:enum_cap")
+        elif enum_cap > 256:
+            issues.append(f"enum_cap_exceeded:{enum_cap}>256")
+    return issues
+
+
 def _write_rendered(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _enforce_time_budget(
+    timings_ms: dict[str, int],
+    budget1_ms: int | None,
+    budget2_ms: int | None,
+) -> list[str]:
+    issues: list[str] = []
+    for key, elapsed in timings_ms.items():
+        if key.endswith("test1_elapsed_ms") and budget1_ms is not None and elapsed > budget1_ms:
+            issues.append(f"budget_exceeded:{key}:{elapsed}>{budget1_ms}")
+        if key.endswith("test2_elapsed_ms") and budget2_ms is not None and elapsed > budget2_ms:
+            issues.append(f"budget_exceeded:{key}:{elapsed}>{budget2_ms}")
+    return issues
 
 
 def _self_check(
@@ -61,7 +98,7 @@ def _self_check(
     r1 = run_lean_file(lean_dir, t1_path, timeout1_s)
     timings["self_test1_elapsed_ms"] = r1.elapsed_ms
     if not r1.ok:
-        reasons.append(f"self_test1:{classify_failure(r1.stderr, r1.timed_out)}")
+        reasons.append(f"self_test1:{classify_failure(r1.stderr, r1.timed_out, r1.stdout)}")
         return False, reasons, timings
 
     t2_content = render_test2(lean_dir, item, item.expected, test2_heartbeats)
@@ -70,7 +107,7 @@ def _self_check(
     r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
     timings["self_test2_elapsed_ms"] = r2.elapsed_ms
     if not r2.ok:
-        reasons.append(f"self_test2:{classify_failure(r2.stderr, r2.timed_out)}")
+        reasons.append(f"self_test2:{classify_failure(r2.stderr, r2.timed_out, r2.stdout)}")
         return False, reasons, timings
 
     return True, reasons, timings
@@ -92,7 +129,8 @@ def _mutation_check(
         reasons.append("mutation:none_generated")
         return False, reasons, timings
 
-    rejected = 0
+    elaborating_mutants = 0
+    shape_or_semantic_rejects = 0
     for idx, cand in enumerate(mutants, 1):
         t1_content = render_test1(lean_dir, item, cand, test1_heartbeats)
         t1_path = work_dir / f"{item.id}.mut{idx}.test1.lean"
@@ -100,19 +138,25 @@ def _mutation_check(
         r1 = run_lean_file(lean_dir, t1_path, timeout1_s)
         timings[f"mut{idx}_test1_elapsed_ms"] = r1.elapsed_ms
         if not r1.ok:
-            rejected += 1
             continue
 
+        elaborating_mutants += 1
         t2_content = render_test2(lean_dir, item, cand, test2_heartbeats)
         t2_path = work_dir / f"{item.id}.mut{idx}.test2.lean"
         _write_rendered(t2_path, t2_content)
         r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
         timings[f"mut{idx}_test2_elapsed_ms"] = r2.elapsed_ms
         if not r2.ok:
-            rejected += 1
+            bucket = classify_failure(r2.stderr, r2.timed_out, r2.stdout)
+            if bucket in {"shape_fail", "semantic_fail"}:
+                shape_or_semantic_rejects += 1
 
-    if rejected == 0:
-        reasons.append("mutation:all_mutants_passed")
+    if elaborating_mutants == 0:
+        reasons.append("mutation:no_elaborating_mutant")
+        return False, reasons, timings
+
+    if shape_or_semantic_rejects == 0:
+        reasons.append("mutation:no_shape_or_semantic_reject")
         return False, reasons, timings
 
     return True, reasons, timings
@@ -129,6 +173,8 @@ def validate_split(
     test2_heartbeats: int,
     timeout1_s: float,
     timeout2_s: float,
+    budget1_ms: int | None,
+    budget2_ms: int | None,
 ) -> dict[str, Any]:
     items = load_split(dataset_dir, split)
     results: list[dict[str, Any]] = []
@@ -145,6 +191,7 @@ def validate_split(
         }
 
         issues = _dataset_forbidden_issues(item)
+        issues.extend(_dataset_family_issues(item))
         if issues:
             entry["valid"] = False
             entry["issues"].extend(issues)
@@ -177,6 +224,15 @@ def validate_split(
             if not ok_mut:
                 entry["valid"] = False
                 entry["issues"].extend(reasons_mut)
+
+            budget_issues = _enforce_time_budget(
+                entry["timings_ms"],
+                budget1_ms=budget1_ms,
+                budget2_ms=budget2_ms,
+            )
+            if budget_issues:
+                entry["valid"] = False
+                entry["issues"].extend(budget_issues)
 
         results.append(entry)
 

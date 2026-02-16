@@ -17,11 +17,17 @@
 - [x] Tier A finite truth-table checker upgraded to explicit Bool assignment enumeration
 - [x] Pilot split expanded to 8 Tier A rows (4 ring + 4 finite truth-table)
 - [x] Expanded pilot split validates locally with mutation checks
+- [x] Shape guard binder-type checks restored with context-safe fvar remapping
+- [x] Validator mutation operators strengthened and deduplicated
+- [x] Validator now enforces per-test elapsed-time budgets (`budget1_ms` / `budget2_ms`)
+- [x] Validator enforces `enum_cap` tags for `fin_truth_table` rows
+- [x] Mutation gate now requires at least one shape/semantic rejection from an elaborating mutant
+- [x] Lean failure bucketing now scans both stdout and stderr (Lean may emit errors on stdout)
 
 ## In Progress
 - [ ] Expand `pilot.jsonl` from 8 bootstrap rows to ~30 curated rows with stronger provenance
-- [ ] Tighten shape guard to robust binder-type and outer-form checks
-- [ ] Add stronger mutation operators and determinism budget enforcement
+- [ ] Extend finite-domain checker from Bool-only to small `Fin n` and enum fragments
+- [ ] Add determinism checks across repeated validator runs (beyond timeout/budget limits)
 
 ## Next Concrete Slice
 1. Extend finite-domain checker beyond Bool to small `Fin n`/enum fragments with deterministic caps.
