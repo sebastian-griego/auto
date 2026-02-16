@@ -23,13 +23,15 @@
 - [x] Validator enforces `enum_cap` tags for `fin_truth_table` rows
 - [x] Mutation gate now requires at least one shape/semantic rejection from an elaborating mutant
 - [x] Lean failure bucketing now scans both stdout and stderr (Lean may emit errors on stdout)
+- [x] `fin_truth_table` extended beyond Bool to deterministic `Fin n` enumeration
+- [x] Pilot split expanded to 10 Tier A rows (including mixed Bool/Fin cases)
 
 ## In Progress
 - [ ] Expand `pilot.jsonl` from 8 bootstrap rows to ~30 curated rows with stronger provenance
-- [ ] Extend finite-domain checker from Bool-only to small `Fin n` and enum fragments
+- [ ] Extend finite-domain checker from `Bool`/`Fin n` to small enum fragments
 - [ ] Add determinism checks across repeated validator runs (beyond timeout/budget limits)
 
 ## Next Concrete Slice
-1. Extend finite-domain checker beyond Bool to small `Fin n`/enum fragments with deterministic caps.
-2. Restore binder-type shape checks in a context-safe way and keep stable bucketing.
+1. Add small enum support to finite truth-table enumeration and tag-based cap checks.
+2. Add rerun-based determinism assertions in validator outputs.
 3. Grow pilot set toward 30 rows with curated provenance (not synthetic placeholders).
