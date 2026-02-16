@@ -272,6 +272,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
             timeout2_s=args.timeout2,
             budget1_ms=budget1_ms,
             budget2_ms=budget2_ms,
+            determinism_repeats=args.determinism_repeats,
+            determinism_jitter_ms=args.determinism_jitter_ms,
         )
     except DatasetError as exc:
         print(f"dataset error: {exc}", file=sys.stderr)
@@ -426,6 +428,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--timeout2", type=float, default=20.0)
     validate.add_argument("--budget1-ms", type=int, default=None)
     validate.add_argument("--budget2-ms", type=int, default=None)
+    validate.add_argument("--determinism-repeats", type=int, default=1)
+    validate.add_argument("--determinism-jitter-ms", type=int, default=None)
     validate.set_defaults(func=cmd_validate)
 
     run = sub.add_parser("run")

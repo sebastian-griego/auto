@@ -162,6 +162,49 @@ def _mutation_check(
     return True, reasons, timings
 
 
+def _determinism_check(
+    item: DatasetItem,
+    lean_dir: Path,
+    work_dir: Path,
+    test2_heartbeats: int,
+    timeout2_s: float,
+    repeats: int,
+    jitter_ms: int | None,
+) -> tuple[bool, list[str], dict[str, int]]:
+    reasons: list[str] = []
+    timings: dict[str, int] = {}
+    if repeats <= 1:
+        return True, reasons, timings
+
+    outcomes: list[tuple[bool, str]] = []
+    elapsed_values: list[int] = []
+    for idx in range(1, repeats + 1):
+        t2_content = render_test2(lean_dir, item, item.expected, test2_heartbeats)
+        t2_path = work_dir / f"{item.id}.det{idx}.test2.lean"
+        _write_rendered(t2_path, t2_content)
+        r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
+        timings[f"det{idx}_test2_elapsed_ms"] = r2.elapsed_ms
+
+        bucket = "pass" if r2.ok else classify_failure(r2.stderr, r2.timed_out, r2.stdout)
+        outcomes.append((r2.ok, bucket))
+        elapsed_values.append(r2.elapsed_ms)
+        if not r2.ok:
+            reasons.append(f"determinism:repeat{idx}:{bucket}")
+
+    if outcomes:
+        baseline = outcomes[0]
+        for idx, outcome in enumerate(outcomes[1:], 2):
+            if outcome != baseline:
+                reasons.append(f"determinism:outcome_mismatch:repeat{idx}")
+
+    if jitter_ms is not None and len(elapsed_values) >= 2:
+        jitter = max(elapsed_values) - min(elapsed_values)
+        if jitter > jitter_ms:
+            reasons.append(f"determinism:jitter_exceeded:{jitter}>{jitter_ms}")
+
+    return len(reasons) == 0, reasons, timings
+
+
 def validate_split(
     dataset_dir: Path,
     split: str,
@@ -175,9 +218,12 @@ def validate_split(
     timeout2_s: float,
     budget1_ms: int | None,
     budget2_ms: int | None,
+    determinism_repeats: int,
+    determinism_jitter_ms: int | None,
 ) -> dict[str, Any]:
     items = load_split(dataset_dir, split)
     results: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
 
     for item in items:
         entry: dict[str, Any] = {
@@ -189,6 +235,16 @@ def validate_split(
             "issues": [],
             "timings_ms": {},
         }
+
+        if item.id in seen_ids:
+            entry["valid"] = False
+            entry["issues"].append(f"duplicate_id:{item.id}")
+        else:
+            seen_ids.add(item.id)
+
+        if item.split != split:
+            entry["valid"] = False
+            entry["issues"].append(f"split_mismatch:{item.split}!={split}")
 
         issues = _dataset_forbidden_issues(item)
         issues.extend(_dataset_family_issues(item))
@@ -224,6 +280,20 @@ def validate_split(
             if not ok_mut:
                 entry["valid"] = False
                 entry["issues"].extend(reasons_mut)
+
+            ok_det, reasons_det, timings_det = _determinism_check(
+                item,
+                lean_dir=lean_dir,
+                work_dir=rendered_dir,
+                test2_heartbeats=test2_heartbeats,
+                timeout2_s=timeout2_s,
+                repeats=determinism_repeats,
+                jitter_ms=determinism_jitter_ms,
+            )
+            entry["timings_ms"].update(timings_det)
+            if not ok_det:
+                entry["valid"] = False
+                entry["issues"].extend(reasons_det)
 
             budget_issues = _enforce_time_budget(
                 entry["timings_ms"],
