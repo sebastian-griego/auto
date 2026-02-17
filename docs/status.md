@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-16
+- Date: 2026-02-17
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -28,15 +28,20 @@
 - [x] Validator supports determinism rerun assertions (`--determinism-repeats`, jitter checks)
 - [x] Validator enforces unique item IDs and split consistency per row
 - [x] `fin_truth_table` supports small enum inductives with nullary constructors
-- [x] Pilot split includes Bool, `Fin n`, and enum finite-domain truth-table rows
+- [x] Pilot split includes Bool and `Fin n` finite-domain truth-table rows
 - [x] Reporting upgraded with per-model slices and deterministic Pass@k aggregation
 - [x] Run artifacts now include rendered/log file paths and optional prompt text
+- [x] Lean runner timeout handling now terminates process groups to avoid orphan Lean processes
+- [x] Validator adds one-time Lean warmup to stabilize cold-start timing budgets
+- [x] Pilot split rows replaced with curated public-source provenance (Lean core + mathlib, Apache-2.0)
+- [x] Curated pilot passes local `make validate` and determinism reruns (`--determinism-repeats 3 --determinism-jitter-ms 5000`)
+- [x] End-to-end mock baseline run produced artifacts at `results/runs/20260217_213234`
 
 ## In Progress
-- [ ] Replace synthetic pilot rows with curated provenance-complete rows from public sources
 - [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
+- [ ] Run real provider baseline (OpenAI + Gemini) once API keys are configured in environment
 
 ## Next Concrete Slice
-1. Curate and replace synthetic pilot rows with provenance-complete sourced rows.
+1. Run one fixed-parameter real baseline over pilot with OpenAI and Gemini adapters.
 2. Add a larger determinism rerun CI gate (beyond current mixed smoke subset).
 3. Add leakage/dedup checks across future dev/test splits.

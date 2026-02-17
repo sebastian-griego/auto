@@ -66,6 +66,21 @@ def _write_rendered(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _warmup_lean(lean_dir: Path, work_dir: Path, timeout_s: float) -> None:
+    # Prime toolchain/import startup so timed per-item checks are not skewed by first-run overhead.
+    warmup_content = "\n".join(
+        [
+            "import Mathlib",
+            "import AutoformalizationEval.Checks",
+            "set_option autoImplicit false",
+            "def _autoform_eval_warmup : Prop := True",
+        ]
+    )
+    warmup_path = work_dir / "_validate_warmup.lean"
+    _write_rendered(warmup_path, warmup_content)
+    run_lean_file(lean_dir, warmup_path, timeout_s)
+
+
 def _enforce_time_budget(
     timings_ms: dict[str, int],
     budget1_ms: int | None,
@@ -224,6 +239,13 @@ def validate_split(
     items = load_split(dataset_dir, split)
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+
+    if use_lean:
+        _warmup_lean(
+            lean_dir=lean_dir,
+            work_dir=rendered_dir,
+            timeout_s=max(timeout1_s, timeout2_s, 30.0),
+        )
 
     for item in items:
         entry: dict[str, Any] = {
