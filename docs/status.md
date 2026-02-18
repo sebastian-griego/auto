@@ -41,12 +41,15 @@
 - [x] Dataset JSONL formatter script added at `scripts/format_jsonl.py`
 - [x] Baseline artifact promotion/repro steps documented at `results/baselines/README.md`
 - [x] End-to-end mock baseline run produced artifacts at `results/runs/20260218_031159`
+- [x] Local pre-commit secrets guard added at `.githooks/pre-commit` and wired via `scripts/setup.sh`
+- [x] Provider adapter compatibility fixes landed for OpenAI Responses API fallback and Gemini thinking-budget handling
+- [x] Real provider baseline artifacts promoted at `results/baselines/pilot/20260218_185307` (`k=1`) and `results/baselines/pilot/20260218_185732` (`k=3`)
 
 ## In Progress
 - [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
-- [ ] Run real provider baseline (OpenAI + Gemini) once API keys are configured in environment (`results/runs/20260218_031501` and `results/runs/20260218_031509` were all `elab_fail` due missing `OPENAI_API_KEY` / `GEMINI_API_KEY`)
+- [ ] Resolve OpenAI `gpt-5` org-verification entitlement and rerun OpenAI baseline (`results/runs/20260218_185307` / `results/runs/20260218_185732` show OpenAI 404 entitlement errors while Gemini completed)
 
 ## Next Concrete Slice
-1. Run one fixed-parameter real baseline over pilot with OpenAI and Gemini adapters.
+1. Resolve OpenAI `gpt-5` access and rerun fixed-parameter provider baseline for cross-provider comparability.
 2. Add a larger determinism rerun CI gate (beyond current mixed smoke subset).
 3. Add leakage/dedup checks across future dev/test splits.

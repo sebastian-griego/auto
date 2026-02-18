@@ -1,0 +1,131 @@
+{
+  "by_bucket": {
+    "elab_fail": 97,
+    "lean_parse_fail": 25,
+    "pass": 55,
+    "semantic_fail": 3
+  },
+  "by_family": {
+    "fin_truth_table": {
+      "combined_rate": 0.2708333333333333,
+      "total": 96
+    },
+    "ring_identity": {
+      "combined_rate": 0.34523809523809523,
+      "total": 84
+    }
+  },
+  "by_model": {
+    "gemini:gemini-2.5-pro": {
+      "by_bucket": {
+        "elab_fail": 7,
+        "lean_parse_fail": 25,
+        "pass": 55,
+        "semantic_fail": 3
+      },
+      "by_family": {
+        "fin_truth_table": {
+          "combined_rate": 0.5416666666666666,
+          "total": 48
+        },
+        "ring_identity": {
+          "combined_rate": 0.6904761904761905,
+          "total": 42
+        }
+      },
+      "by_split": {
+        "pilot": {
+          "combined_rate": 0.6111111111111112,
+          "total": 90
+        }
+      },
+      "by_tier": {
+        "A": {
+          "combined_rate": 0.6111111111111112,
+          "total": 90
+        }
+      },
+      "combined_rate": 0.6111111111111112,
+      "items": 30,
+      "pass_at_k": {
+        "groups": 30,
+        "max_k": 3,
+        "rates": {
+          "1": 0.6333333333333333,
+          "2": 0.6333333333333333,
+          "3": 0.6666666666666666
+        }
+      },
+      "test1_rate": 0.6444444444444445,
+      "test2_rate": 0.6111111111111112,
+      "total_attempts": 90
+    },
+    "openai:gpt-5": {
+      "by_bucket": {
+        "elab_fail": 90
+      },
+      "by_family": {
+        "fin_truth_table": {
+          "combined_rate": 0.0,
+          "total": 48
+        },
+        "ring_identity": {
+          "combined_rate": 0.0,
+          "total": 42
+        }
+      },
+      "by_split": {
+        "pilot": {
+          "combined_rate": 0.0,
+          "total": 90
+        }
+      },
+      "by_tier": {
+        "A": {
+          "combined_rate": 0.0,
+          "total": 90
+        }
+      },
+      "combined_rate": 0.0,
+      "items": 30,
+      "pass_at_k": {
+        "groups": 30,
+        "max_k": 3,
+        "rates": {
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0
+        }
+      },
+      "test1_rate": 0.0,
+      "test2_rate": 0.0,
+      "total_attempts": 90
+    }
+  },
+  "by_split": {
+    "pilot": {
+      "combined_rate": 0.3055555555555556,
+      "total": 180
+    }
+  },
+  "by_tier": {
+    "A": {
+      "combined_rate": 0.3055555555555556,
+      "total": 180
+    }
+  },
+  "combined_rate": 0.3055555555555556,
+  "pass_at_k": {
+    "groups": 60,
+    "max_k": 3,
+    "rates": {
+      "1": 0.31666666666666665,
+      "2": 0.31666666666666665,
+      "3": 0.3333333333333333
+    }
+  },
+  "test1_rate": 0.32222222222222224,
+  "test2_rate": 0.3055555555555556,
+  "total": 180,
+  "total_attempts": 180
+}
