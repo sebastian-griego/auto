@@ -59,6 +59,30 @@ private def polyMul (p q : Poly) : Poly :=
         acc)
     []
 
+private def monoToString (mono : Monomial) : String :=
+  if mono.isEmpty then
+    "1"
+  else
+    String.intercalate "*" (mono.map (fun idx => s!"x{idx}"))
+
+private def termToString (term : Monomial × Nat) : String :=
+  let mono := term.1
+  let coeff := term.2
+  if mono.isEmpty then
+    s!"{coeff}"
+  else if coeff == 1 then
+    monoToString mono
+  else
+    s!"{coeff}*{monoToString mono}"
+
+private def polyToString (poly : Poly) : String :=
+  match poly with
+  | [] => "0"
+  | _ => String.intercalate " + " (poly.map termToString)
+
+private def eqNormToString (eqNorm : Poly × Poly) : String :=
+  s!"{polyToString eqNorm.1} = {polyToString eqNorm.2}"
+
 private def binderIndexOf? (binders : Array Expr) (e : Expr) : Option Nat :=
   match e with
   | .fvar fid =>
@@ -148,6 +172,7 @@ def checkRingIdentityNorm (cand expected : Expr) : MetaM Unit := do
       let direct := candNorm == expNorm
       let swapped := candNorm.1 == expNorm.2 && candNorm.2 == expNorm.1
       unless (direct || swapped) do
-        throwError "[semantic_fail] ring_identity_mismatch"
+        throwError
+          s!"[semantic_fail] ring_identity_mismatch cand_norm:{eqNormToString candNorm} expected_norm:{eqNormToString expNorm}"
 
 end AutoformalizationEval.Families

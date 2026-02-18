@@ -1,4 +1,6 @@
 import Lean
+import Mathlib.Data.Fintype.Basic
+import Mathlib.Data.Fintype.Card
 
 open Lean Meta
 
@@ -12,12 +14,14 @@ private inductive Domain where
   | bool
   | fin (n : Nat)
   | enum (typeName : Name) (ctors : Array Name)
+  | fintype (card : Nat)
   deriving BEq
 
 private def domainSize : Domain → Nat
   | .bool => 2
   | .fin n => n
   | .enum _ ctors => ctors.size
+  | .fintype card => card
 
 private partial def natLitValue? : Expr → Option Nat
   | .lit (.natVal n) => some n
@@ -71,6 +75,20 @@ private def binderDomain? (ty : Expr) : MetaM (Option Domain) := do
   | _ =>
       return none
 
+private def fintypeCard? (ty : Expr) : MetaM (Option Nat) := do
+  let ty ← whnf ty
+  let fintypeTy := mkApp (mkConst ``Fintype) ty
+  match (← synthInstance? fintypeTy) with
+  | none => pure none
+  | some inst =>
+      let cardExpr := mkApp2 (mkConst ``Fintype.card) ty inst
+      let cardWhnf ← whnf cardExpr
+      match natLitValue? cardWhnf with
+      | some n => pure (some n)
+      | none =>
+          let cardReduced ← reduce cardExpr
+          pure (natLitValue? cardReduced)
+
 private def finitePrefix (binders : Array Expr) : MetaM (Array Domain × Nat) := do
   let mut i := 0
   let mut domains : Array Domain := #[]
@@ -85,7 +103,14 @@ private def finitePrefix (binders : Array Expr) : MetaM (Array Domain × Nat) :=
         domains := domains.push d
         i := i + 1
     | none =>
-        throwError "[semantic_fail] fin_domain_unsupported_binder:{i}"
+        match (← fintypeCard? decl.type) with
+        | some 0 =>
+            throwError "[semantic_fail] fin_domain_empty_binder:{i}"
+        | some n =>
+            domains := domains.push (.fintype n)
+            i := i + 1
+        | none =>
+            throwError "[semantic_fail] fin_domain_unsupported_binder:{i}"
   return (domains, i)
 
 private def domainValues : Domain → Array Expr
@@ -102,6 +127,17 @@ private def domainValues : Domain → Array Expr
         return out
   | .enum _ ctors =>
       ctors.map mkConst
+  | .fintype _ =>
+      #[]
+
+private def isExplicitDomain : Domain → Bool
+  | .bool => true
+  | .fin _ => true
+  | .enum _ _ => true
+  | .fintype _ => false
+
+private def allDomainsExplicit (domains : Array Domain) : Bool :=
+  domains.all isExplicitDomain
 
 private def appendValues (vals : List Expr) (arr : Array Expr) : List (Array Expr) :=
   vals.map (fun v => arr.push v)
@@ -132,13 +168,13 @@ private def evalPropAsBool (prop : Expr) : MetaM Bool := do
     else
       throwError "[semantic_fail] truth_table_noncomputable"
 
-private def checkAssignment (candFn expectedFn : Expr) (vals : Array Expr) : MetaM Unit := do
-  let candProp := mkAppN candFn vals
-  let expectedProp := mkAppN expectedFn vals
-  let candVal ← evalPropAsBool candProp
-  let expectedVal ← evalPropAsBool expectedProp
-  unless candVal == expectedVal do
-    throwError "[semantic_fail] truth_table_mismatch"
+private def assignmentToString (binders : Array Expr) (vals : Array Expr) : MetaM String := do
+  let mut parts : Array String := #[]
+  for i in [0:vals.size] do
+    let decl ← (binders.get! i).fvarId!.getDecl
+    let valFmt ← ppExpr (vals.get! i)
+    parts := parts.push s!"{decl.userName} := {valFmt.pretty}"
+  pure (String.intercalate ", " parts.toList)
 
 /--
 Finite truth-table checker for a deterministic fragment over leading binders:
@@ -170,11 +206,37 @@ def checkFinTruthTable (cand expected : Expr) : MetaM Unit := do
 
       let candProp ← mkForallFVars candRestBinders candBody
       let expProp ← mkForallFVars expRestBinders expBody
+      let expPropMapped := expProp.replaceFVars expFiniteBinders candFiniteBinders
 
-      let candFn ← mkLambdaFVars candFiniteBinders candProp
-      let expFn ← mkLambdaFVars expFiniteBinders expProp
+      if allDomainsExplicit candDomains then
+        let candFn ← mkLambdaFVars candFiniteBinders candProp
+        let expFn ← mkLambdaFVars expFiniteBinders expProp
+        let mut firstRef : Option Bool := none
+        let mut refVaries : Bool := false
+        for vals in allAssignments candDomains do
+          let candProp := mkAppN candFn vals
+          let expectedProp := mkAppN expFn vals
+          let candVal ← evalPropAsBool candProp
+          let expectedVal ← evalPropAsBool expectedProp
 
-      for vals in allAssignments candDomains do
-        checkAssignment candFn expFn vals
+          match firstRef with
+          | none =>
+              firstRef := some expectedVal
+          | some b =>
+              if expectedVal != b then
+                refVaries := true
+
+          unless candVal == expectedVal do
+            let witness := (← assignmentToString candFiniteBinders vals)
+            throwError s!"[semantic_fail] truth_table_mismatch:{witness}"
+        unless refVaries do
+          throwError "[semantic_fail] truth_table_reference_constant"
+      else
+        -- Fallback path for supported finite binders with `Fintype` instances:
+        -- compare universally quantified equivalence via `decide`.
+        let iffProp := mkApp2 (mkConst ``Iff) candProp expPropMapped
+        let fullProp ← mkForallFVars candFiniteBinders iffProp
+        unless (← evalPropAsBool fullProp) do
+          throwError "[semantic_fail] truth_table_mismatch"
 
 end AutoformalizationEval.Families

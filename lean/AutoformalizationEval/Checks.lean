@@ -10,7 +10,18 @@ namespace AutoformalizationEval
 private def throwShapeFail (msg : String) : MetaM Unit :=
   throwError "[shape_fail] {msg}"
 
-private def checkFamilyOuterShape (family : String) (body : Expr) : MetaM Unit := do
+private partial def containsAnyFVar (fvars : Array FVarId) : Expr → Bool
+  | .fvar fid => fvars.any (fun fvar => fvar == fid)
+  | .app fn arg => containsAnyFVar fvars fn || containsAnyFVar fvars arg
+  | .lam _ ty body _ => containsAnyFVar fvars ty || containsAnyFVar fvars body
+  | .forallE _ ty body _ => containsAnyFVar fvars ty || containsAnyFVar fvars body
+  | .letE _ ty val body _ =>
+      containsAnyFVar fvars ty || containsAnyFVar fvars val || containsAnyFVar fvars body
+  | .mdata _ body => containsAnyFVar fvars body
+  | .proj _ _ body => containsAnyFVar fvars body
+  | _ => false
+
+private def checkFamilyOuterShape (family : String) (binders : Array Expr) (body : Expr) : MetaM Unit := do
   let head := (body.consumeMData.getAppFn).constName?
   if family == "ring_identity" then
     unless head == some ``Eq do
@@ -21,6 +32,13 @@ private def checkFamilyOuterShape (family : String) (body : Expr) : MetaM Unit :
   else if family == "linear_inequality" then
     unless head == some ``LT.lt || head == some ``LE.le do
       throwShapeFail "expected_lt_or_le"
+  else if family == "fin_truth_table" then
+    let bodyWhnf ← whnf body
+    if bodyWhnf.isConstOf ``True || bodyWhnf.isConstOf ``False then
+      throwShapeFail "truth_table_constant_prop"
+    let binderFVars := binders.map (fun b => b.fvarId!)
+    unless containsAnyFVar binderFVars body do
+      throwShapeFail "truth_table_no_binder_ref"
   else
     pure ()
 
@@ -42,8 +60,8 @@ def checkShape (family : String) (cand expected : Expr) : MetaM Unit := do
           expDecl.type.replaceFVars (expXs.extract 0 i) (candXs.extract 0 i)
         unless (← isDefEq candDecl.type expTyMapped) do
           throwShapeFail s!"binder_type:{i}"
-      checkFamilyOuterShape family candBody
-      checkFamilyOuterShape family expBody
+      checkFamilyOuterShape family candXs candBody
+      checkFamilyOuterShape family expXs expBody
 
 /-- Dispatch into family-specific semantic checkers. -/
 def checkFamily (checkKey : String) (cand expected : Expr) : MetaM Unit := do

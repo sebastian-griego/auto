@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-17
+- Date: 2026-02-18
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -36,10 +36,15 @@
 - [x] Pilot split rows replaced with curated public-source provenance (Lean core + mathlib, Apache-2.0)
 - [x] Curated pilot passes local `make validate` and determinism reruns (`--determinism-repeats 3 --determinism-jitter-ms 5000`)
 - [x] End-to-end mock baseline run produced artifacts at `results/runs/20260217_213234`
+- [x] `fin_truth_table` semantic checker rejects constant reference truth tables
+- [x] Pilot `fin_truth_table` references rewritten to non-constant assignments; local validate passes
+- [x] Dataset JSONL formatter script added at `scripts/format_jsonl.py`
+- [x] Baseline artifact promotion/repro steps documented at `results/baselines/README.md`
+- [x] End-to-end mock baseline run produced artifacts at `results/runs/20260218_031159`
 
 ## In Progress
 - [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
-- [ ] Run real provider baseline (OpenAI + Gemini) once API keys are configured in environment
+- [ ] Run real provider baseline (OpenAI + Gemini) once API keys are configured in environment (`results/runs/20260218_031501` and `results/runs/20260218_031509` were all `elab_fail` due missing `OPENAI_API_KEY` / `GEMINI_API_KEY`)
 
 ## Next Concrete Slice
 1. Run one fixed-parameter real baseline over pilot with OpenAI and Gemini adapters.
