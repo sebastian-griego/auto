@@ -24,6 +24,8 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 ./scripts/setup.sh
 ```
 
+`setup.sh` also enables the repository hook path (`core.hooksPath=.githooks`) so the local pre-commit secrets guard runs before each commit.
+
 Then:
 ```bash
 cd harness

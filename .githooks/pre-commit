@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+BAD=0
+STAGED=()
+
+while IFS= read -r -d '' path; do
+  STAGED+=("$path")
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+
+if [ "${#STAGED[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+for path in "${STAGED[@]}"; do
+  if [[ "$path" =~ (^|/)\.env$ ]]; then
+    echo "[secrets_guard] blocked: '$path' (.env files must stay local)" >&2
+    BAD=1
+  elif [[ "$path" =~ (^|/)\.env\..+ ]] && [[ ! "$path" =~ (^|/)\.env\.example$ ]]; then
+    echo "[secrets_guard] blocked: '$path' (.env.* is blocked except .env.example)" >&2
+    BAD=1
+  fi
+done
+
+PATTERNS=(
+  'sk-[A-Za-z0-9]{20,}'
+  'AIza[0-9A-Za-z_-]{20,}'
+  '-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----'
+)
+
+for path in "${STAGED[@]}"; do
+  tmp="$(mktemp)"
+  if ! git show ":$path" >"$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    continue
+  fi
+
+  for p in "${PATTERNS[@]}"; do
+    if LC_ALL=C grep -nE --binary-files=without-match -- "$p" "$tmp" >/tmp/autoform_secret_matches.$$; then
+      echo "[secrets_guard] blocked: potential secret in '$path' (pattern: $p)" >&2
+      sed -n '1,3p' /tmp/autoform_secret_matches.$$ >&2
+      BAD=1
+    fi
+  done
+
+  rm -f "$tmp"
+done
+
+rm -f /tmp/autoform_secret_matches.$$
+
+if [ "$BAD" -ne 0 ]; then
+  echo "[secrets_guard] commit aborted" >&2
+  exit 1
+fi
