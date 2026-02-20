@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from .dataset import load_split
+from .dataset import iter_all_splits, load_split
 from .lean_runner import classify_failure, run_lean_file
 from .mutate import generate_mutants
 from .parse import has_forbidden_tokens
@@ -21,6 +22,7 @@ FORBIDDEN_DATASET_TOKENS = {
     "section",
     "sorry",
 }
+WS_RE = re.compile(r"\s+")
 
 
 def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
@@ -59,6 +61,29 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
         elif enum_cap > 256:
             issues.append(f"enum_cap_exceeded:{enum_cap}>256")
     return issues
+
+
+def _normalize_text(value: str) -> str:
+    return WS_RE.sub(" ", value.strip())
+
+
+def _build_cross_split_indexes(
+    dataset_dir: Path,
+    split: str,
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, list[tuple[str, str]]]]:
+    other_split_nl: dict[str, list[tuple[str, str]]] = {}
+    other_split_expected: dict[str, list[tuple[str, str]]] = {}
+    for other_split, items in iter_all_splits(dataset_dir):
+        if other_split == split:
+            continue
+        for item in items:
+            nl_key = _normalize_text(item.nl)
+            expected_key = _normalize_text(item.expected)
+            if nl_key:
+                other_split_nl.setdefault(nl_key, []).append((other_split, item.id))
+            if expected_key:
+                other_split_expected.setdefault(expected_key, []).append((other_split, item.id))
+    return other_split_nl, other_split_expected
 
 
 def _write_rendered(path: Path, content: str) -> None:
@@ -239,6 +264,9 @@ def validate_split(
     items = load_split(dataset_dir, split)
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+    seen_nl: dict[str, str] = {}
+    seen_expected: dict[str, str] = {}
+    other_split_nl, other_split_expected = _build_cross_split_indexes(dataset_dir, split)
 
     if use_lean:
         _warmup_lean(
@@ -263,6 +291,36 @@ def validate_split(
             entry["issues"].append(f"duplicate_id:{item.id}")
         else:
             seen_ids.add(item.id)
+
+        nl_key = _normalize_text(item.nl)
+        if nl_key:
+            prior_nl = seen_nl.get(nl_key)
+            if prior_nl:
+                entry["valid"] = False
+                entry["issues"].append(f"duplicate_nl:{prior_nl}")
+            else:
+                seen_nl[nl_key] = item.id
+
+            other_nl_matches = other_split_nl.get(nl_key, [])
+            if other_nl_matches:
+                entry["valid"] = False
+                for other_split, other_id in other_nl_matches:
+                    entry["issues"].append(f"cross_split_duplicate_nl:{other_split}:{other_id}")
+
+        expected_key = _normalize_text(item.expected)
+        if expected_key:
+            prior_expected = seen_expected.get(expected_key)
+            if prior_expected:
+                entry["valid"] = False
+                entry["issues"].append(f"duplicate_expected:{prior_expected}")
+            else:
+                seen_expected[expected_key] = item.id
+
+            other_expected_matches = other_split_expected.get(expected_key, [])
+            if other_expected_matches:
+                entry["valid"] = False
+                for other_split, other_id in other_expected_matches:
+                    entry["issues"].append(f"cross_split_duplicate_expected:{other_split}:{other_id}")
 
         if item.split != split:
             entry["valid"] = False

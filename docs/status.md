@@ -46,12 +46,17 @@
 - [x] Real provider baseline artifacts promoted at `results/baselines/pilot/20260218_185307` (`k=1`) and `results/baselines/pilot/20260218_185732` (`k=3`)
 - [x] Candidate parsing now unwraps single- and double-backtick whole-term inline code wrappers before Lean checks
 - [x] Harness run metadata now auto-detects pinned `mathlib` revision from `lean/lakefile.lean` when `--mathlib-rev` is unset
+- [x] Gemini-only pilot baseline refreshed after parser/metadata fixes at `results/baselines/pilot/20260220_032149` (`k=1`)
+- [x] CI `validate_dataset` now asserts pilot split stability (`total == 30`, `invalid == 0`)
+- [x] CI determinism smoke subset expanded from 8 to 13 mixed-family pilot rows
+- [x] Validator now enforces NL/expected duplicate checks within split and cross-split leakage checks
+- [x] CI now validates `dev` split with schema/leakage checks (`--skip-lean`)
 
 ## In Progress
-- [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
-- [ ] Expand deterministic CI smoke coverage while preserving current runtime budget
+- [ ] Add first non-empty `dev` split rows and keep split-level leakage checks green
+- [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison
 
 ## Next Concrete Slice
-1. Increase determinism rerun CI coverage (for example from 8 to 12-16 mixed-family pilot rows).
-2. Add a concise CI assertion for stable pilot item count and unique IDs.
-3. Add leakage/dedup checks across future dev/test splits.
+1. Populate `dataset/dev.jsonl` with the next curated Tier A batch (ring + finite truth-table).
+2. Add one focused CI run that validates both `pilot` and non-empty `dev` with Lean checks.
+3. Add `test` split scaffolding and enforce cross-split leakage checks across all three splits.

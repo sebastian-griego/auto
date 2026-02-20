@@ -27,6 +27,25 @@ jobs:
           cd harness
           python -m autoform_eval.cli validate --split pilot
 
+      - name: Assert pilot split count and validity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report_path = Path("dataset/validation_report.json")
+          if not report_path.exists():
+            raise SystemExit(f"missing validation report: {report_path}")
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          total = int(report.get("total", -1))
+          invalid = int(report.get("invalid", -1))
+          if total != 30:
+            raise SystemExit(f"pilot row count drifted: expected 30, got {total}")
+          if invalid != 0:
+            raise SystemExit(f"pilot validation invalid count expected 0, got {invalid}")
+          print(f"pilot validation summary ok: total={total}, invalid={invalid}")
+          PY
+
       - name: Determinism smoke validate (mixed subset)
         run: |
           python - <<'PY'
@@ -37,13 +56,18 @@ jobs:
           rows = [json.loads(line) for line in src.read_text(encoding="utf-8").splitlines() if line.strip()]
           keep = {
               "pilot_ring_001",
+              "pilot_ring_003",
               "pilot_ring_005",
+              "pilot_ring_007",
               "pilot_ring_010",
+              "pilot_ring_012",
               "pilot_ring_014",
               "pilot_fintruth_001",
+              "pilot_fintruth_003",
               "pilot_fintruth_005",
+              "pilot_fintruth_007",
+              "pilot_fintruth_010",
               "pilot_fintruth_013",
-              "pilot_fintruth_016",
           }
           out_dir = Path("/tmp/auto_det_dataset")
           out_dir.mkdir(parents=True, exist_ok=True)
@@ -63,3 +87,8 @@ jobs:
             --dataset-dir /tmp/auto_det_dataset \
             --determinism-repeats 3 \
             --determinism-jitter-ms 5000
+
+      - name: Validate dev split (schema and leakage checks)
+        run: |
+          cd harness
+          python -m autoform_eval.cli validate --split dev --skip-lean
