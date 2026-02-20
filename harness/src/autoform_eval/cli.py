@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -37,6 +38,17 @@ def _default_results_root() -> Path:
 
 def _default_cache_root() -> Path:
     return _repo_root() / "harness_cache"
+
+
+def _read_mathlib_rev(lean_dir: Path) -> str:
+    lakefile = lean_dir / "lakefile.lean"
+    if not lakefile.exists():
+        return "unknown"
+    text = lakefile.read_text(encoding="utf-8")
+    match = re.search(r'require\s+mathlib\s+from\s+git\s+".*?"\s+@\s+"([^"]+)"', text, re.DOTALL)
+    if not match:
+        return "unknown"
+    return match.group(1).strip() or "unknown"
 
 
 def _mk_run_id() -> str:
@@ -347,6 +359,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     records: list[dict[str, Any]] = []
     toolchain = (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip() if (lean_dir / "lean-toolchain").exists() else ""
+    mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
+    if not mathlib_rev or mathlib_rev == "unknown":
+        mathlib_rev = _read_mathlib_rev(lean_dir)
 
     for item in items:
         for provider, model in models:
@@ -405,7 +420,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "candidate_raw": attempt["candidate_raw"],
                     "candidate_hash": attempt["candidate_hash"],
                     "lean_toolchain": toolchain,
-                    "mathlib_rev": args.mathlib_rev,
+                    "mathlib_rev": mathlib_rev,
                     "test1_heartbeats": args.test1_heartbeats,
                     "test2_heartbeats": args.test2_heartbeats,
                     "test1_pass": attempt["test1_pass"],
@@ -493,7 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--results-root", default=str(_default_results_root()))
     run.add_argument("--cache-root", default=str(_default_cache_root()))
     run.add_argument("--run-id", default="")
-    run.add_argument("--mathlib-rev", default=os.getenv("MATHLIB_REV", "unknown"))
+    run.add_argument("--mathlib-rev", default=os.getenv("MATHLIB_REV", ""))
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-output-tokens", type=int, default=512)
     run.add_argument("--save-prompt-text", action="store_true")

@@ -40,6 +40,23 @@ def strip_comments(text: str) -> str:
     return LINE_COMMENT_RE.sub("", prev)
 
 
+def unwrap_inline_code(text: str) -> str:
+    candidate = text.strip()
+    for delimiter in ("``", "`"):
+        if not (candidate.startswith(delimiter) and candidate.endswith(delimiter)):
+            continue
+        if len(candidate) <= len(delimiter) * 2:
+            continue
+        inner = candidate[len(delimiter) : -len(delimiter)]
+        # Only unwrap if the body is a single inline span rather than mixed content.
+        if delimiter in inner:
+            continue
+        unwrapped = inner.strip()
+        if unwrapped:
+            return unwrapped
+    return candidate
+
+
 def has_forbidden_tokens(text: str, forbidden_ok: set[str] | None = None, strict_reject_assign: bool = False) -> str | None:
     forbidden_ok = forbidden_ok or set()
     scan = text
@@ -59,7 +76,7 @@ def parse_candidate(raw_text: str, forbidden_ok: set[str] | None = None, strict_
         return fenced
 
     no_comments = strip_comments(fenced.candidate)
-    candidate = no_comments.strip()
+    candidate = unwrap_inline_code(no_comments)
     if not candidate:
         return ParseResult(False, "", "empty_candidate")
 

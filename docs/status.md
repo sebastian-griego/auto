@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-18
+- Date: 2026-02-20
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -44,12 +44,14 @@
 - [x] Local pre-commit secrets guard added at `.githooks/pre-commit` and wired via `scripts/setup.sh`
 - [x] Provider adapter compatibility fixes landed for OpenAI Responses API fallback and Gemini thinking-budget handling
 - [x] Real provider baseline artifacts promoted at `results/baselines/pilot/20260218_185307` (`k=1`) and `results/baselines/pilot/20260218_185732` (`k=3`)
+- [x] Candidate parsing now unwraps single- and double-backtick whole-term inline code wrappers before Lean checks
+- [x] Harness run metadata now auto-detects pinned `mathlib` revision from `lean/lakefile.lean` when `--mathlib-rev` is unset
 
 ## In Progress
 - [ ] Run determinism reruns in broader CI coverage while keeping job time bounded
-- [ ] Resolve OpenAI `gpt-5` org-verification entitlement and rerun OpenAI baseline (`results/runs/20260218_185307` / `results/runs/20260218_185732` show OpenAI 404 entitlement errors while Gemini completed)
+- [ ] Expand deterministic CI smoke coverage while preserving current runtime budget
 
 ## Next Concrete Slice
-1. Resolve OpenAI `gpt-5` access and rerun fixed-parameter provider baseline for cross-provider comparability.
-2. Add a larger determinism rerun CI gate (beyond current mixed smoke subset).
+1. Increase determinism rerun CI coverage (for example from 8 to 12-16 mixed-family pilot rows).
+2. Add a concise CI assertion for stable pilot item count and unique IDs.
 3. Add leakage/dedup checks across future dev/test splits.
