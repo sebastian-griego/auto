@@ -19,6 +19,20 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
+      - name: Cache Lean toolchain and lake packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            lean/.lake
+          key: ${{ runner.os }}-lean-${{ hashFiles('lean/lean-toolchain', 'lean/lakefile.lean') }}
+
+      - name: Build Lean project
+        run: |
+          cd lean
+          lake exe cache get || true
+          lake build
+
       - name: Install harness
         run: python -m pip install -e harness
 
@@ -92,3 +106,44 @@ jobs:
         run: |
           cd harness
           python -m autoform_eval.cli validate --split dev --skip-lean
+
+      - name: Validate dev split (Lean smoke subset)
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          src_dev = Path("dataset/dev.jsonl")
+          rows = [json.loads(line) for line in src_dev.read_text(encoding="utf-8").splitlines() if line.strip()]
+          keep = {
+              "dev_ring_001",
+              "dev_ring_003",
+              "dev_ring_005",
+              "dev_ring_007",
+              "dev_fintruth_001",
+              "dev_fintruth_003",
+              "dev_fintruth_006",
+              "dev_fintruth_009",
+          }
+          selected = [r for r in rows if r["id"] in keep]
+          if len(selected) != len(keep):
+            missing = sorted(keep - {r["id"] for r in selected})
+            raise SystemExit(f"missing dev smoke ids: {missing}")
+
+          out_dir = Path("/tmp/auto_dev_smoke")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          (out_dir / "pilot.jsonl").write_text(Path("dataset/pilot.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+          (out_dir / "dev.jsonl").write_text(
+              "\\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\\n",
+              encoding="utf-8",
+          )
+          (out_dir / "test.jsonl").write_text(Path("dataset/test.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+          print(f"dev-lean-smoke rows: {len(selected)}")
+          PY
+
+          cd harness
+          python -m autoform_eval.cli validate \
+            --split dev \
+            --dataset-dir /tmp/auto_dev_smoke \
+            --timeout1 12 \
+            --timeout2 25

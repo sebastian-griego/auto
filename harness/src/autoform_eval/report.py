@@ -172,9 +172,14 @@ def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, A
     for row in records:
         if row.get("bucket") == "pass":
             continue
+        stderr_excerpt = str(row.get("stderr_excerpt", "")).strip()
+        stdout_excerpt = str(row.get("stdout_excerpt", "")).strip()
+        lean_output = stderr_excerpt if stderr_excerpt else stdout_excerpt
         lines.append(f"- item `{row.get('item_id')}` bucket `{row.get('bucket')}`")
         lines.append(f"  - candidate: `{row.get('candidate_raw', '')[:120]}`")
-        lines.append(f"  - stderr: `{str(row.get('stderr_excerpt', '')).strip()[:180]}`")
+        lines.append(f"  - lean_output: `{lean_output[:180]}`")
+        lines.append(f"  - stderr_excerpt: `{stderr_excerpt[:180]}`")
+        lines.append(f"  - stdout_excerpt: `{stdout_excerpt[:180]}`")
         shown += 1
         if shown >= 10:
             break

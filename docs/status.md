@@ -51,12 +51,17 @@
 - [x] CI determinism smoke subset expanded from 8 to 13 mixed-family pilot rows
 - [x] Validator now enforces NL/expected duplicate checks within split and cross-split leakage checks
 - [x] CI now validates `dev` split with schema/leakage checks (`--skip-lean`)
+- [x] Report sample failures now include stderr/stdout excerpts so Lean stdout-only errors are visible
+- [x] `validate_dataset` CI now mirrors Lean cache/build setup (`~/.elan`, `lean/.lake`, `lake build`)
+- [x] `dev` split initialized with 20 Tier A rows (`ring_identity` + `fin_truth_table`)
+- [x] Local `dev` validation passes with and without Lean checks (`--timeout1 12 --timeout2 25`)
+- [x] Baseline report regenerated post-report-fix at `results/baselines/pilot/20260220_032149/report.md`
 
 ## In Progress
-- [ ] Add first non-empty `dev` split rows and keep split-level leakage checks green
 - [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison
+- [ ] Keep `dev` Lean smoke coverage bounded in CI as item count grows
 
 ## Next Concrete Slice
-1. Populate `dataset/dev.jsonl` with the next curated Tier A batch (ring + finite truth-table).
-2. Add one focused CI run that validates both `pilot` and non-empty `dev` with Lean checks.
+1. Refresh Gemini pilot baseline at `k=3` and promote artifacts.
+2. Expand `dev` with another curated Tier A batch while preserving cross-split leakage constraints.
 3. Add `test` split scaffolding and enforce cross-split leakage checks across all three splits.
