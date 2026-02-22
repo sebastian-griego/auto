@@ -63,23 +63,36 @@ def checkShape (family : String) (cand expected : Expr) : MetaM Unit := do
       checkFamilyOuterShape family candXs candBody
       checkFamilyOuterShape family expXs expBody
 
+private def requireFragmentKey (checkKey fragmentKey expectedFragment : String) : MetaM Unit := do
+  unless fragmentKey == expectedFragment do
+    throwError
+      s!"[semantic_fail] fragment_key_mismatch:{checkKey}:{fragmentKey}!={expectedFragment}"
+
 /-- Dispatch into family-specific semantic checkers. -/
-def checkFamily (checkKey : String) (cand expected : Expr) : MetaM Unit := do
+def checkFamily (checkKey : String) (fragmentKey : String) (enumCap : Nat) (cand expected : Expr) : MetaM Unit := do
   match checkKey with
-  | "ring_identity_norm" => Families.checkRingIdentityNorm cand expected
-  | "fin_truth_table" => Families.checkFinTruthTable cand expected
-  | "set_equality_norm" => Families.checkSetEquality cand expected
+  | "ring_identity_norm" =>
+      requireFragmentKey checkKey fragmentKey "ring_identity_norm_v1"
+      Families.checkRingIdentityNorm cand expected
+  | "fin_truth_table" =>
+      requireFragmentKey checkKey fragmentKey "fin_truth_table_v1"
+      Families.checkFinTruthTable cand expected enumCap
+  | "set_equality_norm" =>
+      requireFragmentKey checkKey fragmentKey "set_equality_norm_v0"
+      Families.checkSetEquality cand expected
   | _ => throwError "[semantic_fail] unknown_check_key:{checkKey}"
 
 /-- Command-level entrypoint used by rendered Test2 files. -/
-syntax (name := autoformCheckCmd) "autoform_check" str str : command
+syntax (name := autoformCheckCmd) "autoform_check" str str str num : command
 
 @[command_elab autoformCheckCmd] def elabAutoformCheck : CommandElab := fun stx => do
   match stx with
-  | `(command| autoform_check $family:str $check:str) =>
+  | `(command| autoform_check $family:str $check:str $fragment:str $enumCap:num) =>
       liftTermElabM do
         let familyName := family.getString
         let checkKey := check.getString
+        let fragmentKey := fragment.getString
+        let enumCapNat := enumCap.getNat
         let candInfo ← getConstInfo `cand
         let expectedInfo ← getConstInfo `expected
         lambdaTelescope candInfo.value! fun candCtx candExpr => do
@@ -95,7 +108,7 @@ syntax (name := autoformCheckCmd) "autoform_check" str str : command
                 throwError s!"[shape_fail] context_binder_type:{i}"
             let expectedExpr := expectedExprRaw.replaceFVars expCtx candCtx
             checkShape familyName candExpr expectedExpr
-            checkFamily checkKey candExpr expectedExpr
+            checkFamily checkKey fragmentKey enumCapNat candExpr expectedExpr
   | _ => throwUnsupportedSyntax
 
 end AutoformalizationEval

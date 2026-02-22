@@ -12,6 +12,6 @@ def cand : Prop :=
 def expected : Prop :=
 {{EXPECTED}}
 
-autoform_check "{{FAMILY}}" "{{CHECK_KEY}}"
+autoform_check "{{FAMILY}}" "{{CHECK_KEY}}" "{{FRAGMENT_KEY}}" {{ENUM_CAP}}
 
 def test2_ok : True := True.intro

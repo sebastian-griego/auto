@@ -23,6 +23,9 @@ FORBIDDEN_DATASET_TOKENS = {
     "sorry",
 }
 WS_RE = re.compile(r"\s+")
+LEADING_FORALL_RE = re.compile(r"^\s*(?:\u2200|forall)\s+([^:]+?)\s*:\s*([^,]+?)\s*,\s*(.*)$", re.DOTALL)
+FIN_TYPE_RE = re.compile(r"^Fin\s*\(?\s*(\d+)\s*\)?$")
+INDUCTIVE_RE = re.compile(r"^inductive\s+([A-Za-z_][A-Za-z0-9_']*)\b")
 
 
 def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
@@ -60,7 +63,93 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
             issues.append("invalid_tag:enum_cap")
         elif enum_cap > 256:
             issues.append(f"enum_cap_exceeded:{enum_cap}>256")
+        else:
+            computed_cap, reason = _compute_enum_cap_from_item(item)
+            if reason is not None:
+                issues.append(f"enum_cap_compute_error:{reason}")
+            elif computed_cap is None:
+                issues.append("enum_cap_compute_error:no_finite_prefix")
+            elif computed_cap != enum_cap:
+                issues.append(f"enum_cap_mismatch:tag={enum_cap}:computed={computed_cap}")
     return issues
+
+
+def _parse_context_enum_sizes(context: str) -> dict[str, int]:
+    enum_sizes: dict[str, int] = {}
+    current_name: str | None = None
+    current_ctors = 0
+    for raw_line in context.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = INDUCTIVE_RE.match(line)
+        if match:
+            if current_name is not None and current_ctors > 0:
+                enum_sizes[current_name] = current_ctors
+            current_name = match.group(1)
+            current_ctors = 0
+            continue
+        if current_name is None:
+            continue
+        if line.startswith("|"):
+            current_ctors += 1
+            continue
+        if line.startswith("deriving"):
+            if current_ctors > 0:
+                enum_sizes[current_name] = current_ctors
+            current_name = None
+            current_ctors = 0
+            continue
+        if current_ctors > 0:
+            enum_sizes[current_name] = current_ctors
+        current_name = None
+        current_ctors = 0
+    if current_name is not None and current_ctors > 0:
+        enum_sizes[current_name] = current_ctors
+    return enum_sizes
+
+
+def _finite_domain_size(ty: str, enum_sizes: dict[str, int]) -> int | None:
+    ty_norm = ty.strip()
+    if ty_norm == "Bool":
+        return 2
+    fin_match = FIN_TYPE_RE.match(ty_norm)
+    if fin_match:
+        return int(fin_match.group(1))
+    if ty_norm in enum_sizes:
+        return enum_sizes[ty_norm]
+    return None
+
+
+def _compute_enum_cap_from_item(item: DatasetItem) -> tuple[int | None, str | None]:
+    expected = item.expected.strip()
+    enum_sizes = _parse_context_enum_sizes(item.context)
+    cap = 1
+    saw_finite_binder = False
+
+    while True:
+        match = LEADING_FORALL_RE.match(expected)
+        if not match:
+            break
+        vars_part = match.group(1).strip()
+        ty_part = match.group(2).strip()
+        expected = match.group(3).strip()
+
+        var_names = [v for v in vars_part.split() if v]
+        if not var_names:
+            return None, "binder_parse"
+
+        domain_size = _finite_domain_size(ty_part, enum_sizes)
+        if domain_size is None:
+            break
+
+        saw_finite_binder = True
+        for _ in var_names:
+            cap *= domain_size
+
+    if not saw_finite_binder:
+        return None, None
+    return cap, None
 
 
 def _normalize_text(value: str) -> str:

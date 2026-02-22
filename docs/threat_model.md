@@ -11,8 +11,11 @@
 - Test1 elaboration contract (`cand : Prop`).
 - Shape guard before family semantics.
 - Family checker dispatch with deterministic checks.
+- Family fragment keys are passed into Test2 and enforced by checker dispatch.
+- `fin_truth_table` enum caps are passed per item into Test2 and enforced in Lean.
 - Mutation tests in validator.
+- Provider/API failures are bucketed as `provider_error` and kept separate from Lean failure buckets.
 
 ## Remaining limitations
-- Bootstrap family checkers still use strict expression comparison and must be upgraded.
 - Tier B families are placeholders.
+- Tier A checkers still operate on deliberately restricted fragments; equivalent out-of-fragment terms fail by design.

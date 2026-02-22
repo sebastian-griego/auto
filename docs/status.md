@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-20
+- Date: 2026-02-22
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -56,6 +56,12 @@
 - [x] `dev` split initialized with 20 Tier A rows (`ring_identity` + `fin_truth_table`)
 - [x] Local `dev` validation passes with and without Lean checks (`--timeout1 12 --timeout2 25`)
 - [x] Baseline report regenerated post-report-fix at `results/baselines/pilot/20260220_032149/report.md`
+- [x] Runner now buckets provider/API generation failures as `provider_error` (separate from Lean failures)
+- [x] Summary/report denominators now exclude `provider_error` attempts while still reporting provider error counts/rates
+- [x] Benchmark prompt is now versioned (`v1.0.0`) and recorded per attempt (`prompt_version`)
+- [x] Test2 now consumes explicit fragment keys and enforces checker/key compatibility in Lean
+- [x] `fin_truth_table` Test2 now consumes per-item `enum_cap` values rendered from tags
+- [x] Validator now recomputes finite assignment caps from item binders and enforces `enum_cap` tag consistency
 
 ## In Progress
 - [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison

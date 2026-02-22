@@ -90,6 +90,7 @@ For each attempt per item, record:
 
 Bucket taxonomy:
 
+- `provider_error` (no candidate produced due to provider/API/access failure; report separately from Lean outcomes)
 - `output_parse_reject`
 - `lean_parse_fail`
 - `elab_fail`
@@ -106,6 +107,10 @@ Compute at minimum:
 - Semantic rate (Test 2 pass rate)
 - Combined rate (Test 1 and Test 2)
 - Pass@k on combined rate
+
+Rate denominator note:
+- Exclude `provider_error` attempts from autoformalization success denominators.
+- Report provider error counts/rates separately.
 
 Recommended slices:
 

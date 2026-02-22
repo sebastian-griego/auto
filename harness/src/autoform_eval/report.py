@@ -18,6 +18,10 @@ def _as_attempt_index(value: Any) -> int:
     return out if out >= 1 else 1
 
 
+def _is_provider_error(row: dict[str, Any]) -> bool:
+    return str(row.get("bucket", "")) == "provider_error"
+
+
 def _pass_at_k(records: list[dict[str, Any]], key_fields: tuple[str, ...]) -> dict[str, Any]:
     grouped: dict[tuple[str, ...], list[tuple[int, bool]]] = defaultdict(list)
     max_k = 1
@@ -56,9 +60,12 @@ def _combined_by_key(records: list[dict[str, Any]], field: str) -> dict[str, dic
 
 def compute_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(records)
-    t1 = sum(1 for r in records if r.get("test1_pass"))
-    t2 = sum(1 for r in records if r.get("test2_pass"))
-    combined = sum(1 for r in records if r.get("bucket") == "pass")
+    evaluable_records = [r for r in records if not _is_provider_error(r)]
+    evaluable_total = len(evaluable_records)
+    provider_error_attempts = total - evaluable_total
+    t1 = sum(1 for r in evaluable_records if r.get("test1_pass"))
+    t2 = sum(1 for r in evaluable_records if r.get("test2_pass"))
+    combined = sum(1 for r in evaluable_records if r.get("bucket") == "pass")
 
     by_bucket = Counter()
     for r in records:
@@ -73,34 +80,41 @@ def compute_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     by_model: dict[str, dict[str, Any]] = {}
     for model_key, rows in sorted(by_model_records.items()):
-        model_t1 = sum(1 for r in rows if r.get("test1_pass"))
-        model_t2 = sum(1 for r in rows if r.get("test2_pass"))
-        model_combined = sum(1 for r in rows if r.get("bucket") == "pass")
+        model_evaluable_rows = [r for r in rows if not _is_provider_error(r)]
+        model_provider_error_attempts = len(rows) - len(model_evaluable_rows)
+        model_t1 = sum(1 for r in model_evaluable_rows if r.get("test1_pass"))
+        model_t2 = sum(1 for r in model_evaluable_rows if r.get("test2_pass"))
+        model_combined = sum(1 for r in model_evaluable_rows if r.get("bucket") == "pass")
         model_items = len({str(r.get("item_id", "")) for r in rows})
         model_bucket = Counter(str(r.get("bucket", "unknown")) for r in rows)
         by_model[model_key] = {
             "total_attempts": len(rows),
+            "evaluable_attempts": len(model_evaluable_rows),
+            "provider_error_attempts": model_provider_error_attempts,
             "items": model_items,
-            "test1_rate": _rate(model_t1, len(rows)),
-            "test2_rate": _rate(model_t2, len(rows)),
-            "combined_rate": _rate(model_combined, len(rows)),
-            "pass_at_k": _pass_at_k(rows, key_fields=("item_id",)),
+            "test1_rate": _rate(model_t1, len(model_evaluable_rows)),
+            "test2_rate": _rate(model_t2, len(model_evaluable_rows)),
+            "combined_rate": _rate(model_combined, len(model_evaluable_rows)),
+            "pass_at_k": _pass_at_k(model_evaluable_rows, key_fields=("item_id",)),
             "by_bucket": dict(model_bucket),
-            "by_family": _combined_by_key(rows, "family"),
-            "by_tier": _combined_by_key(rows, "tier"),
-            "by_split": _combined_by_key(rows, "split"),
+            "by_family": _combined_by_key(model_evaluable_rows, "family"),
+            "by_tier": _combined_by_key(model_evaluable_rows, "tier"),
+            "by_split": _combined_by_key(model_evaluable_rows, "split"),
         }
 
     return {
         "total": total,
         "total_attempts": total,
-        "test1_rate": _rate(t1, total),
-        "test2_rate": _rate(t2, total),
-        "combined_rate": _rate(combined, total),
-        "pass_at_k": _pass_at_k(records, key_fields=("provider", "model", "item_id")),
-        "by_family": _combined_by_key(records, "family"),
-        "by_tier": _combined_by_key(records, "tier"),
-        "by_split": _combined_by_key(records, "split"),
+        "evaluable_attempts": evaluable_total,
+        "provider_error_attempts": provider_error_attempts,
+        "provider_error_rate": _rate(provider_error_attempts, total),
+        "test1_rate": _rate(t1, evaluable_total),
+        "test2_rate": _rate(t2, evaluable_total),
+        "combined_rate": _rate(combined, evaluable_total),
+        "pass_at_k": _pass_at_k(evaluable_records, key_fields=("provider", "model", "item_id")),
+        "by_family": _combined_by_key(evaluable_records, "family"),
+        "by_tier": _combined_by_key(evaluable_records, "tier"),
+        "by_split": _combined_by_key(evaluable_records, "split"),
         "by_bucket": dict(by_bucket),
         "by_model": by_model,
     }
@@ -118,19 +132,22 @@ def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, A
     lines.append("## Overall")
     lines.append("")
     lines.append(f"- Total attempts: {summary['total_attempts']}")
-    lines.append(f"- Test1 rate: {summary['test1_rate']:.3f}")
-    lines.append(f"- Test2 rate: {summary['test2_rate']:.3f}")
-    lines.append(f"- Combined rate: {summary['combined_rate']:.3f}")
+    lines.append(f"- Evaluable attempts (exclude provider errors): {summary.get('evaluable_attempts', 0)}")
+    lines.append(f"- Provider error attempts: {summary.get('provider_error_attempts', 0)}")
+    lines.append(f"- Provider error rate: {float(summary.get('provider_error_rate', 0.0)):.3f}")
+    lines.append(f"- Test1 rate (evaluable only): {summary['test1_rate']:.3f}")
+    lines.append(f"- Test2 rate (evaluable only): {summary['test2_rate']:.3f}")
+    lines.append(f"- Combined rate (evaluable only): {summary['combined_rate']:.3f}")
     pass_at_k = summary.get("pass_at_k", {})
     rates = pass_at_k.get("rates", {})
     if rates:
         max_k = pass_at_k.get("max_k", 1)
-        lines.append(f"- Pass@{max_k}: {float(rates.get(str(max_k), 0.0)):.3f}")
+        lines.append(f"- Pass@{max_k} (evaluable only): {float(rates.get(str(max_k), 0.0)):.3f}")
     lines.append("")
     lines.append("## Model Table")
     lines.append("")
-    lines.append("| Model | Attempts | Items | Test1 | Test2 | Combined | Pass@k(max) |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    lines.append("| Model | Attempts | Evaluable | ProviderErr | Items | Test1 | Test2 | Combined | Pass@k(max) |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for model_key, model_summary in summary.get("by_model", {}).items():
         model_pass = model_summary.get("pass_at_k", {})
         model_rates = model_pass.get("rates", {})
@@ -140,6 +157,8 @@ def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, A
             "| "
             f"{model_key} | "
             f"{int(model_summary.get('total_attempts', 0))} | "
+            f"{int(model_summary.get('evaluable_attempts', 0))} | "
+            f"{int(model_summary.get('provider_error_attempts', 0))} | "
             f"{int(model_summary.get('items', 0))} | "
             f"{float(model_summary.get('test1_rate', 0.0)):.3f} | "
             f"{float(model_summary.get('test2_rate', 0.0)):.3f} | "

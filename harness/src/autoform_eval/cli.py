@@ -14,6 +14,7 @@ from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
 from .lean_runner import classify_failure, run_lean_file
 from .parse import parse_candidate
+from .prompt import BENCHMARK_PROMPT_VERSION, build_prompt, fragment_for_item
 from .render import render_test1, render_test2
 from .report import compute_summary, write_report, write_summary
 from .types import excerpt
@@ -55,18 +56,6 @@ def _mk_run_id() -> str:
     return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
 
 
-def _build_prompt(nl: str, context: str) -> str:
-    rules = (
-        "Return exactly one Lean term that elaborates to Prop. "
-        "Do not return theorem/lemma/def/example/namespace/section/by/sorry."
-    )
-    parts = [rules, "", f"Natural language statement:\n{nl.strip()}"]
-    ctx = context.strip()
-    if ctx:
-        parts.extend(["", f"Lean context:\n{ctx}"])
-    return "\n".join(parts)
-
-
 def _adapter_for(provider: str):
     provider = provider.lower().strip()
     if provider == "openai":
@@ -74,6 +63,39 @@ def _adapter_for(provider: str):
     if provider == "gemini":
         return GeminiAdapter()
     raise ValueError(f"unsupported provider '{provider}'")
+
+
+def _provider_error_attempt(
+    *,
+    reason: str,
+    candidate_raw: str,
+    prompt_hash: str,
+    prompt_text: str | None,
+    prompt_version: str,
+    fragment_key: str,
+) -> dict[str, Any]:
+    return {
+        "test1_pass": False,
+        "test2_pass": False,
+        "shape_pass": None,
+        "bucket": "provider_error",
+        "test1_elapsed_ms": 0,
+        "test2_elapsed_ms": 0,
+        "stdout_excerpt": "",
+        "stderr_excerpt": excerpt(reason),
+        "candidate_raw": candidate_raw,
+        "candidate_hash": stable_hash(candidate_raw) if candidate_raw else "",
+        "prompt_hash": prompt_hash,
+        "prompt_version": prompt_version,
+        "fragment_key": fragment_key,
+        "prompt_text": prompt_text,
+        "test1_rendered_path": "",
+        "test2_rendered_path": "",
+        "test1_stdout_log_path": "",
+        "test1_stderr_log_path": "",
+        "test2_stdout_log_path": "",
+        "test2_stderr_log_path": "",
+    }
 
 
 def _run_attempt(
@@ -91,8 +113,10 @@ def _run_attempt(
     hb2: int,
     mock: bool,
     save_prompt_text: bool,
+    prompt_version: str,
 ) -> dict[str, Any]:
-    prompt = _build_prompt(item.nl, item.context)
+    prompt = build_prompt(item, prompt_version=prompt_version)
+    fragment_key = fragment_for_item(item)
     prompt_hash = stable_hash(prompt)
     prompt_text = prompt if save_prompt_text else None
 
@@ -107,6 +131,8 @@ def _run_attempt(
                 "schema_version": item.schema_version,
                 "checker_version": item.checker_version,
                 "k_index": k_index,
+                "prompt_version": prompt_version,
+                "fragment_key": fragment_key,
             },
             sort_keys=True,
         )
@@ -114,13 +140,35 @@ def _run_attempt(
 
     model_cache = cache.get("model", cache_key_model)
     if model_cache:
+        provider_error = model_cache.get("provider_error")
+        if isinstance(provider_error, str) and provider_error:
+            return _provider_error_attempt(
+                reason=provider_error,
+                candidate_raw="",
+                prompt_hash=prompt_hash,
+                prompt_text=prompt_text,
+                prompt_version=prompt_version,
+                fragment_key=fragment_key,
+            )
         candidate_raw = str(model_cache.get("candidate_raw", ""))
     else:
         if mock:
             candidate_raw = item.expected
         else:
-            adapter = _adapter_for(provider)
-            candidate_raw = adapter.generate(model=model, prompt=prompt, params=params)
+            try:
+                adapter = _adapter_for(provider)
+                candidate_raw = adapter.generate(model=model, prompt=prompt, params=params)
+            except Exception as exc:  # noqa: BLE001
+                provider_error = f"provider_error:{type(exc).__name__}:{exc}"
+                cache.set("model", cache_key_model, {"provider_error": provider_error})
+                return _provider_error_attempt(
+                    reason=provider_error,
+                    candidate_raw="",
+                    prompt_hash=prompt_hash,
+                    prompt_text=prompt_text,
+                    prompt_version=prompt_version,
+                    fragment_key=fragment_key,
+                )
         cache.set("model", cache_key_model, {"candidate_raw": candidate_raw})
 
     parse_res = parse_candidate(candidate_raw, forbidden_ok=set(item.forbidden_ok), strict_reject_assign=False)
@@ -137,6 +185,8 @@ def _run_attempt(
             "candidate_raw": candidate_raw,
             "candidate_hash": stable_hash(candidate_raw),
             "prompt_hash": prompt_hash,
+            "prompt_version": prompt_version,
+            "fragment_key": fragment_key,
             "prompt_text": prompt_text,
             "test1_rendered_path": "",
             "test2_rendered_path": "",
@@ -217,6 +267,8 @@ def _run_attempt(
             "candidate_raw": candidate_raw,
             "candidate_hash": stable_hash(candidate),
             "prompt_hash": prompt_hash,
+            "prompt_version": prompt_version,
+            "fragment_key": fragment_key,
             "prompt_text": prompt_text,
             "test1_rendered_path": t1_rendered_rel,
             "test2_rendered_path": "",
@@ -291,6 +343,8 @@ def _run_attempt(
         "candidate_raw": candidate_raw,
         "candidate_hash": stable_hash(candidate),
         "prompt_hash": prompt_hash,
+        "prompt_version": prompt_version,
+        "fragment_key": fragment_key,
         "prompt_text": prompt_text,
         "test1_rendered_path": t1_rendered_rel,
         "test2_rendered_path": t2_rendered_rel,
@@ -362,6 +416,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
     if not mathlib_rev or mathlib_rev == "unknown":
         mathlib_rev = _read_mathlib_rev(lean_dir)
+    if args.prompt_version != BENCHMARK_PROMPT_VERSION:
+        print(
+            f"unsupported prompt version '{args.prompt_version}' (supported: {BENCHMARK_PROMPT_VERSION})",
+            file=sys.stderr,
+        )
+        return 2
 
     for item in items:
         for provider, model in models:
@@ -382,6 +442,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         hb2=args.test2_heartbeats,
                         mock=args.mock,
                         save_prompt_text=args.save_prompt_text,
+                        prompt_version=args.prompt_version,
                     )
                 except Exception as exc:  # noqa: BLE001
                     attempt = {
@@ -396,6 +457,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "candidate_raw": "",
                         "candidate_hash": "",
                         "prompt_hash": "",
+                        "prompt_version": args.prompt_version,
+                        "fragment_key": fragment_for_item(item),
                         "prompt_text": None,
                         "test1_rendered_path": "",
                         "test2_rendered_path": "",
@@ -417,6 +480,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "attempt_index": k_index,
                     "params": {"temperature": args.temperature, "max_output_tokens": args.max_output_tokens},
                     "prompt_hash": attempt["prompt_hash"],
+                    "prompt_version": attempt["prompt_version"],
+                    "fragment_key": attempt["fragment_key"],
                     "candidate_raw": attempt["candidate_raw"],
                     "candidate_hash": attempt["candidate_hash"],
                     "lean_toolchain": toolchain,
@@ -500,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run")
     run.add_argument("--split", default="pilot")
-    run.add_argument("--models", default="openai:gpt-5")
+    run.add_argument("--models", default="openai:gpt-4.1-mini")
     run.add_argument("--k", type=int, default=1)
     run.add_argument("--mock", action="store_true", help="Use expected proposition as model output")
     run.add_argument("--dataset-dir", default=str(_default_dataset_dir()))
@@ -509,6 +574,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cache-root", default=str(_default_cache_root()))
     run.add_argument("--run-id", default="")
     run.add_argument("--mathlib-rev", default=os.getenv("MATHLIB_REV", ""))
+    run.add_argument("--prompt-version", default=BENCHMARK_PROMPT_VERSION)
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-output-tokens", type=int, default=512)
     run.add_argument("--save-prompt-text", action="store_true")

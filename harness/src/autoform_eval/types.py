@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 
 Bucket = Literal[
+    "provider_error",
     "output_parse_reject",
     "lean_parse_fail",
     "elab_fail",

@@ -3,6 +3,7 @@
 ## Fixed defaults
 - `k = 1`
 - `temperature = 0.0`
+- `prompt_version = v1.0.0`
 - Test1 heartbeats: `40000`
 - Test2 heartbeats: `200000`
 - Test1 timeout: `8s`
@@ -11,13 +12,33 @@
   - `budget1_ms = timeout1 * 1000`
   - `budget2_ms = timeout2 * 1000`
 
-## Run command
+## Benchmark prompt
+- Prompt text is versioned in code at `harness/src/autoform_eval/prompt.py`.
+- Run artifacts include `prompt_version`, `prompt_hash`, and optional `prompt_text`.
+- If prompt text changes, bump `BENCHMARK_PROMPT_VERSION` and treat results as a new baseline.
+
+## Run command (reproducible local)
 ```bash
 cd harness
 python -m autoform_eval.cli run \
   --split pilot \
-  --models openai:gpt-5,gemini:gemini-2.5-pro \
-  --k 1
+  --models openai:mock \
+  --mock \
+  --k 1 \
+  --prompt-version v1.0.0
+```
+
+## Run command (real providers)
+Provider/model availability is account-dependent. Unavailable models are bucketed as `provider_error`
+and excluded from semantic-rate denominators.
+
+```bash
+cd harness
+python -m autoform_eval.cli run \
+  --split pilot \
+  --models openai:gpt-4.1-mini,gemini:gemini-2.5-pro \
+  --k 1 \
+  --prompt-version v1.0.0
 ```
 
 ## Pass@k
@@ -27,7 +48,7 @@ per model and overall, grouped by `(provider, model, item_id)`.
 Example:
 ```bash
 cd harness
-python -m autoform_eval.cli run --split pilot --models openai:gpt-5 --k 3
+python -m autoform_eval.cli run --split pilot --models openai:gpt-4.1-mini --k 3
 ```
 
 Optional:

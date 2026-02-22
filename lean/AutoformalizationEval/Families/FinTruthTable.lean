@@ -183,8 +183,9 @@ Finite truth-table checker for a deterministic fragment over leading binders:
 - small enum inductives with nullary constructors
 
 This enumerates all assignments and compares `decide` outputs.
+The assignment count must stay under `enumCap`.
 -/
-def checkFinTruthTable (cand expected : Expr) : MetaM Unit := do
+def checkFinTruthTable (cand expected : Expr) (enumCap : Nat) : MetaM Unit := do
   forallTelescopeReducing cand fun candXs candBody => do
     forallTelescopeReducing expected fun expXs expBody => do
       let (candDomains, candFiniteArity) ← finitePrefix candXs
@@ -195,8 +196,8 @@ def checkFinTruthTable (cand expected : Expr) : MetaM Unit := do
         throwError "[semantic_fail] truth_table_domain_mismatch"
 
       let nAssignments := assignmentCount candDomains
-      if nAssignments > 256 then
-        throwError "[semantic_fail] truth_table_enum_cap_exceeded"
+      if nAssignments > enumCap then
+        throwError s!"[semantic_fail] truth_table_enum_cap_exceeded:{nAssignments}>{enumCap}"
 
       let candFiniteBinders := candXs.extract 0 candFiniteArity
       let expFiniteBinders := expXs.extract 0 expFiniteArity
