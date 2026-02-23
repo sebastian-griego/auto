@@ -21,6 +21,32 @@ from .types import excerpt
 from .validate import validate_split
 
 
+_TRANSIENT_PROVIDER_ERROR_HINTS = (
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "deadline exceeded",
+    "connection reset",
+    "connection refused",
+    "connection aborted",
+    "connection error",
+    "connection timed out",
+    "gateway timeout",
+    "internal server error",
+    "network is unreachable",
+    "rate limit",
+    "resource exhausted",
+    "service unavailable",
+    "temporarily unavailable",
+    "timeout",
+    "timed out",
+    "too many requests",
+    "try again",
+)
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -63,6 +89,47 @@ def _adapter_for(provider: str):
     if provider == "gemini":
         return GeminiAdapter()
     raise ValueError(f"unsupported provider '{provider}'")
+
+
+def _is_transient_provider_error(reason: str) -> bool:
+    lowered = reason.lower()
+    return any(marker in lowered for marker in _TRANSIENT_PROVIDER_ERROR_HINTS)
+
+
+def _generate_candidate_with_retries(
+    *,
+    provider: str,
+    model: str,
+    prompt: str,
+    params: dict[str, Any],
+    retries: int,
+    retry_backoff_s: float,
+) -> tuple[str | None, str | None, bool]:
+    retries = max(0, int(retries))
+    retry_backoff_s = max(0.0, float(retry_backoff_s))
+
+    try:
+        adapter = _adapter_for(provider)
+    except Exception as exc:  # noqa: BLE001
+        provider_error = f"provider_error:{type(exc).__name__}:{exc}"
+        return None, provider_error, _is_transient_provider_error(provider_error)
+
+    last_error: str | None = None
+    last_error_transient = False
+    for attempt_idx in range(retries + 1):
+        try:
+            return adapter.generate(model=model, prompt=prompt, params=params), None, False
+        except Exception as exc:  # noqa: BLE001
+            provider_error = f"provider_error:{type(exc).__name__}:{exc}"
+            last_error = provider_error
+            last_error_transient = _is_transient_provider_error(provider_error)
+            if not last_error_transient or attempt_idx >= retries:
+                break
+            sleep_s = retry_backoff_s * (2**attempt_idx)
+            if sleep_s > 0:
+                time.sleep(sleep_s)
+
+    return None, (last_error or "provider_error:unknown"), last_error_transient
 
 
 def _provider_error_attempt(
@@ -114,6 +181,8 @@ def _run_attempt(
     mock: bool,
     save_prompt_text: bool,
     prompt_version: str,
+    provider_retries: int,
+    provider_retry_backoff_s: float,
 ) -> dict[str, Any]:
     prompt = build_prompt(item, prompt_version=prompt_version)
     fragment_key = fragment_for_item(item)
@@ -139,28 +208,15 @@ def _run_attempt(
     )
 
     model_cache = cache.get("model", cache_key_model)
-    if model_cache:
-        provider_error = model_cache.get("provider_error")
-        if isinstance(provider_error, str) and provider_error:
-            return _provider_error_attempt(
-                reason=provider_error,
-                candidate_raw="",
-                prompt_hash=prompt_hash,
-                prompt_text=prompt_text,
-                prompt_version=prompt_version,
-                fragment_key=fragment_key,
-            )
+    if model_cache and "candidate_raw" in model_cache:
         candidate_raw = str(model_cache.get("candidate_raw", ""))
     else:
-        if mock:
-            candidate_raw = item.expected
-        else:
-            try:
-                adapter = _adapter_for(provider)
-                candidate_raw = adapter.generate(model=model, prompt=prompt, params=params)
-            except Exception as exc:  # noqa: BLE001
-                provider_error = f"provider_error:{type(exc).__name__}:{exc}"
-                cache.set("model", cache_key_model, {"provider_error": provider_error})
+        if model_cache:
+            provider_error = model_cache.get("provider_error")
+            provider_error_cacheable = bool(model_cache.get("provider_error_cacheable", True))
+            if isinstance(provider_error, str) and provider_error and _is_transient_provider_error(provider_error):
+                provider_error_cacheable = False
+            if isinstance(provider_error, str) and provider_error and provider_error_cacheable:
                 return _provider_error_attempt(
                     reason=provider_error,
                     candidate_raw="",
@@ -169,6 +225,34 @@ def _run_attempt(
                     prompt_version=prompt_version,
                     fragment_key=fragment_key,
                 )
+
+        if mock:
+            candidate_raw = item.expected
+        else:
+            generated_candidate, provider_error, provider_error_transient = _generate_candidate_with_retries(
+                provider=provider,
+                model=model,
+                prompt=prompt,
+                params=params,
+                retries=provider_retries,
+                retry_backoff_s=provider_retry_backoff_s,
+            )
+            if provider_error:
+                if not provider_error_transient:
+                    cache.set(
+                        "model",
+                        cache_key_model,
+                        {"provider_error": provider_error, "provider_error_cacheable": True},
+                    )
+                return _provider_error_attempt(
+                    reason=provider_error,
+                    candidate_raw="",
+                    prompt_hash=prompt_hash,
+                    prompt_text=prompt_text,
+                    prompt_version=prompt_version,
+                    fragment_key=fragment_key,
+                )
+            candidate_raw = generated_candidate or ""
         cache.set("model", cache_key_model, {"candidate_raw": candidate_raw})
 
     parse_res = parse_candidate(candidate_raw, forbidden_ok=set(item.forbidden_ok), strict_reject_assign=False)
@@ -443,6 +527,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                         mock=args.mock,
                         save_prompt_text=args.save_prompt_text,
                         prompt_version=args.prompt_version,
+                        provider_retries=args.provider_retries,
+                        provider_retry_backoff_s=args.provider_retry_backoff_s,
                     )
                 except Exception as exc:  # noqa: BLE001
                     attempt = {
@@ -578,6 +664,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-output-tokens", type=int, default=512)
     run.add_argument("--save-prompt-text", action="store_true")
+    run.add_argument("--provider-retries", type=int, default=2)
+    run.add_argument("--provider-retry-backoff-s", type=float, default=1.0)
     run.add_argument("--test1-heartbeats", type=int, default=40000)
     run.add_argument("--test2-heartbeats", type=int, default=200000)
     run.add_argument("--timeout1", type=float, default=8.0)

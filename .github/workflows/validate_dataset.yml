@@ -107,6 +107,11 @@ jobs:
           cd harness
           python -m autoform_eval.cli validate --split dev --skip-lean
 
+      - name: Validate test split (schema and leakage checks)
+        run: |
+          cd harness
+          python -m autoform_eval.cli validate --split test --skip-lean
+
       - name: Validate dev split (Lean smoke subset)
         run: |
           python - <<'PY'

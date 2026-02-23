@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-22
+- Date: 2026-02-23
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -62,6 +62,8 @@
 - [x] Test2 now consumes explicit fragment keys and enforces checker/key compatibility in Lean
 - [x] `fin_truth_table` Test2 now consumes per-item `enum_cap` values rendered from tags
 - [x] Validator now recomputes finite assignment caps from item binders and enforces `enum_cap` tag consistency
+- [x] Runner now retries transient provider errors and avoids caching them as sticky `provider_error` failures
+- [x] CI now validates `test` split schema/leakage checks (`--skip-lean`)
 
 ## In Progress
 - [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison
@@ -70,4 +72,4 @@
 ## Next Concrete Slice
 1. Refresh Gemini pilot baseline at `k=3` and promote artifacts.
 2. Expand `dev` with another curated Tier A batch while preserving cross-split leakage constraints.
-3. Add `test` split scaffolding and enforce cross-split leakage checks across all three splits.
+3. Populate and freeze holdout `test` split once dev loop stabilizes.

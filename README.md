@@ -21,6 +21,7 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 
 ## Run accounting
 - Provider/API failures are bucketed as `provider_error` (separate from Lean failure buckets).
+- Transient provider failures are retried and not cached as sticky provider errors.
 - Summary semantic rates exclude `provider_error` attempts from denominators.
 - Prompt construction is versioned (`--prompt-version`, default `v1.0.0`) and recorded in run artifacts.
 
