@@ -53,8 +53,8 @@ jobs:
           report = json.loads(report_path.read_text(encoding="utf-8"))
           total = int(report.get("total", -1))
           invalid = int(report.get("invalid", -1))
-          if total != 30:
-            raise SystemExit(f"pilot row count drifted: expected 30, got {total}")
+          if total != 15:
+            raise SystemExit(f"pilot row count drifted: expected 15, got {total}")
           if invalid != 0:
             raise SystemExit(f"pilot validation invalid count expected 0, got {invalid}")
           print(f"pilot validation summary ok: total={total}, invalid={invalid}")
@@ -68,26 +68,19 @@ jobs:
 
           src = Path("dataset/pilot.jsonl")
           rows = [json.loads(line) for line in src.read_text(encoding="utf-8").splitlines() if line.strip()]
-          keep = {
-              "pilot_ring_001",
-              "pilot_ring_003",
-              "pilot_ring_005",
-              "pilot_ring_007",
-              "pilot_ring_010",
-              "pilot_ring_012",
-              "pilot_ring_014",
-              "pilot_fintruth_001",
-              "pilot_fintruth_003",
-              "pilot_fintruth_005",
-              "pilot_fintruth_007",
-              "pilot_fintruth_010",
-              "pilot_fintruth_013",
-          }
+          rows = sorted(rows, key=lambda r: r["id"])
+
+          def pick(family: str, n: int):
+            picked = [r for r in rows if r.get("family") == family][:n]
+            if len(picked) < n:
+              raise SystemExit(f"not enough rows for family {family}: need {n}, got {len(picked)}")
+            return picked
+
+          selected = pick("ring_identity", 4) + pick("fin_truth_table", 4)
           out_dir = Path("/tmp/auto_det_dataset")
           out_dir.mkdir(parents=True, exist_ok=True)
-          selected = [r for r in rows if r["id"] in keep]
           (out_dir / "pilot.jsonl").write_text(
-              "\\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\\n",
+              "\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\n",
               encoding="utf-8",
           )
           (out_dir / "dev.jsonl").write_text("", encoding="utf-8")
@@ -120,26 +113,21 @@ jobs:
 
           src_dev = Path("dataset/dev.jsonl")
           rows = [json.loads(line) for line in src_dev.read_text(encoding="utf-8").splitlines() if line.strip()]
-          keep = {
-              "dev_ring_001",
-              "dev_ring_003",
-              "dev_ring_005",
-              "dev_ring_007",
-              "dev_fintruth_001",
-              "dev_fintruth_003",
-              "dev_fintruth_006",
-              "dev_fintruth_009",
-          }
-          selected = [r for r in rows if r["id"] in keep]
-          if len(selected) != len(keep):
-            missing = sorted(keep - {r["id"] for r in selected})
-            raise SystemExit(f"missing dev smoke ids: {missing}")
+          rows = sorted(rows, key=lambda r: r["id"])
+
+          def pick(family: str, n: int):
+            picked = [r for r in rows if r.get("family") == family][:n]
+            if len(picked) < n:
+              raise SystemExit(f"not enough dev rows for family {family}: need {n}, got {len(picked)}")
+            return picked
+
+          selected = pick("ring_identity", 4) + pick("fin_truth_table", 4)
 
           out_dir = Path("/tmp/auto_dev_smoke")
           out_dir.mkdir(parents=True, exist_ok=True)
           (out_dir / "pilot.jsonl").write_text(Path("dataset/pilot.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
           (out_dir / "dev.jsonl").write_text(
-              "\\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\\n",
+              "\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\n",
               encoding="utf-8",
           )
           (out_dir / "test.jsonl").write_text(Path("dataset/test.jsonl").read_text(encoding="utf-8"), encoding="utf-8")

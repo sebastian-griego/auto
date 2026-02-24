@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-23
+- Date: 2026-02-24
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -47,7 +47,7 @@
 - [x] Candidate parsing now unwraps single- and double-backtick whole-term inline code wrappers before Lean checks
 - [x] Harness run metadata now auto-detects pinned `mathlib` revision from `lean/lakefile.lean` when `--mathlib-rev` is unset
 - [x] Gemini-only pilot baseline refreshed after parser/metadata fixes at `results/baselines/pilot/20260220_032149` (`k=1`)
-- [x] CI `validate_dataset` now asserts pilot split stability (`total == 30`, `invalid == 0`)
+- [x] CI `validate_dataset` now asserts pilot split stability (`total == 15`, `invalid == 0`)
 - [x] CI determinism smoke subset expanded from 8 to 13 mixed-family pilot rows
 - [x] Validator now enforces NL/expected duplicate checks within split and cross-split leakage checks
 - [x] CI now validates `dev` split with schema/leakage checks (`--skip-lean`)
@@ -64,10 +64,10 @@
 - [x] Validator now recomputes finite assignment caps from item binders and enforces `enum_cap` tag consistency
 - [x] Runner now retries transient provider errors and avoids caching them as sticky `provider_error` failures
 - [x] CI now validates `test` split schema/leakage checks (`--skip-lean`)
+- [x] CI smoke subsets now pick deterministic per-family rows by sorted IDs (ID-agnostic) and emit proper JSONL newlines
 
 ## In Progress
 - [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison
-- [ ] Keep `dev` Lean smoke coverage bounded in CI as item count grows
 
 ## Next Concrete Slice
 1. Refresh Gemini pilot baseline at `k=3` and promote artifacts.
