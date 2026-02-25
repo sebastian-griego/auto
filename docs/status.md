@@ -72,11 +72,13 @@
 - [x] Targeted full Lean checks for affected enum-context subsets pass (`dev`: 6/6, `test`: 6/6)
 - [x] Gemini-only pilot baselines refreshed and promoted at `results/baselines/pilot/20260224_233417` (`k=1`) and `results/baselines/pilot/20260224_233637` (`k=3`)
 - [x] Full Lean-backed validation reruns pass locally on `dev` (`total=100`, `invalid=0`) and `test` (`total=200`, `invalid=0`) after fixing `ftt_dev_0011` shape compatibility
+- [x] Gemini dev baseline promoted at `results/baselines/dev/20260225_051505_dev_gemini_k1_v1` (`k=1`, `prompt=v1.0.0`, combined rate `0.830`)
+- [x] v1 freeze policy and hashes documented at `docs/v1_freeze.md`
 
 ## In Progress
-- [ ] Produce a real Gemini baseline run on `dev` with prompt version `v1.0.0` and promote artifacts under `results/baselines/dev/`
+- [ ] Run single frozen Gemini baseline on `test` (`k=1`, `prompt=v1.0.0`) and promote artifacts under `results/baselines/test/`
 
 ## Next Concrete Slice
-1. Run Gemini baseline on `dev` (`k=1`, prompt `v1.0.0`) and promote artifacts with `METADATA.txt`.
-2. Add a short v1 freeze note (prompt/test/checker/split lock) and tag or release commit.
-3. Run single frozen Gemini baseline on `test` (`k=1`) and promote artifacts.
+1. Run and promote the single frozen Gemini baseline on `test` (`k=1`).
+2. Write `docs/v1_results.md` with split/family sizes, metric definitions, baseline tables, and concrete failure examples.
+3. Scope a deterministic v1.1 family expansion plan without changing frozen v1 results.

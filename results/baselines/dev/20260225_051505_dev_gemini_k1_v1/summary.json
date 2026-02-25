@@ -1,0 +1,89 @@
+{
+  "by_bucket": {
+    "pass": 83,
+    "semantic_fail": 12,
+    "shape_fail": 5
+  },
+  "by_family": {
+    "fin_truth_table": {
+      "combined_rate": 0.9166666666666666,
+      "total": 60
+    },
+    "ring_identity": {
+      "combined_rate": 0.7,
+      "total": 40
+    }
+  },
+  "by_model": {
+    "gemini:gemini-2.5-pro": {
+      "by_bucket": {
+        "pass": 83,
+        "semantic_fail": 12,
+        "shape_fail": 5
+      },
+      "by_family": {
+        "fin_truth_table": {
+          "combined_rate": 0.9166666666666666,
+          "total": 60
+        },
+        "ring_identity": {
+          "combined_rate": 0.7,
+          "total": 40
+        }
+      },
+      "by_split": {
+        "dev": {
+          "combined_rate": 0.83,
+          "total": 100
+        }
+      },
+      "by_tier": {
+        "A": {
+          "combined_rate": 0.83,
+          "total": 100
+        }
+      },
+      "combined_rate": 0.83,
+      "evaluable_attempts": 100,
+      "items": 100,
+      "pass_at_k": {
+        "groups": 100,
+        "max_k": 1,
+        "rates": {
+          "1": 0.83
+        }
+      },
+      "provider_error_attempts": 0,
+      "test1_rate": 1.0,
+      "test2_rate": 0.83,
+      "total_attempts": 100
+    }
+  },
+  "by_split": {
+    "dev": {
+      "combined_rate": 0.83,
+      "total": 100
+    }
+  },
+  "by_tier": {
+    "A": {
+      "combined_rate": 0.83,
+      "total": 100
+    }
+  },
+  "combined_rate": 0.83,
+  "evaluable_attempts": 100,
+  "pass_at_k": {
+    "groups": 100,
+    "max_k": 1,
+    "rates": {
+      "1": 0.83
+    }
+  },
+  "provider_error_attempts": 0,
+  "provider_error_rate": 0.0,
+  "test1_rate": 1.0,
+  "test2_rate": 0.83,
+  "total": 100,
+  "total_attempts": 100
+}
