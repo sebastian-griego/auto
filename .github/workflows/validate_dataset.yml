@@ -92,6 +92,7 @@ jobs:
           python -m autoform_eval.cli validate \
             --split pilot \
             --dataset-dir /tmp/auto_det_dataset \
+            --out-report /tmp/auto_det_dataset/validation_report.json \
             --determinism-repeats 3 \
             --determinism-jitter-ms 5000
 
@@ -138,5 +139,43 @@ jobs:
           python -m autoform_eval.cli validate \
             --split dev \
             --dataset-dir /tmp/auto_dev_smoke \
+            --out-report /tmp/auto_dev_smoke/validation_report.json \
+            --timeout1 12 \
+            --timeout2 25
+
+      - name: Validate test split (Lean smoke subset)
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          src_test = Path("dataset/test.jsonl")
+          rows = [json.loads(line) for line in src_test.read_text(encoding="utf-8").splitlines() if line.strip()]
+          rows = sorted(rows, key=lambda r: r["id"])
+
+          def pick(family: str, n: int):
+            picked = [r for r in rows if r.get("family") == family][:n]
+            if len(picked) < n:
+              raise SystemExit(f"not enough test rows for family {family}: need {n}, got {len(picked)}")
+            return picked
+
+          selected = pick("ring_identity", 4) + pick("fin_truth_table", 4)
+
+          out_dir = Path("/tmp/auto_test_smoke")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          (out_dir / "pilot.jsonl").write_text(Path("dataset/pilot.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+          (out_dir / "dev.jsonl").write_text(Path("dataset/dev.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+          (out_dir / "test.jsonl").write_text(
+              "\n".join(json.dumps(r, separators=(",", ":")) for r in selected) + "\n",
+              encoding="utf-8",
+          )
+          print(f"test-lean-smoke rows: {len(selected)}")
+          PY
+
+          cd harness
+          python -m autoform_eval.cli validate \
+            --split test \
+            --dataset-dir /tmp/auto_test_smoke \
+            --out-report /tmp/auto_test_smoke/validation_report.json \
             --timeout1 12 \
             --timeout2 25

@@ -1,0 +1,91 @@
+{
+  "by_bucket": {
+    "pass": 42,
+    "semantic_fail": 3
+  },
+  "by_family": {
+    "fin_truth_table": {
+      "combined_rate": 0.875,
+      "total": 24
+    },
+    "ring_identity": {
+      "combined_rate": 1.0,
+      "total": 21
+    }
+  },
+  "by_model": {
+    "gemini:gemini-2.5-pro": {
+      "by_bucket": {
+        "pass": 42,
+        "semantic_fail": 3
+      },
+      "by_family": {
+        "fin_truth_table": {
+          "combined_rate": 0.875,
+          "total": 24
+        },
+        "ring_identity": {
+          "combined_rate": 1.0,
+          "total": 21
+        }
+      },
+      "by_split": {
+        "pilot": {
+          "combined_rate": 0.9333333333333333,
+          "total": 45
+        }
+      },
+      "by_tier": {
+        "A": {
+          "combined_rate": 0.9333333333333333,
+          "total": 45
+        }
+      },
+      "combined_rate": 0.9333333333333333,
+      "evaluable_attempts": 45,
+      "items": 15,
+      "pass_at_k": {
+        "groups": 15,
+        "max_k": 3,
+        "rates": {
+          "1": 0.9333333333333333,
+          "2": 0.9333333333333333,
+          "3": 0.9333333333333333
+        }
+      },
+      "provider_error_attempts": 0,
+      "test1_rate": 1.0,
+      "test2_rate": 0.9333333333333333,
+      "total_attempts": 45
+    }
+  },
+  "by_split": {
+    "pilot": {
+      "combined_rate": 0.9333333333333333,
+      "total": 45
+    }
+  },
+  "by_tier": {
+    "A": {
+      "combined_rate": 0.9333333333333333,
+      "total": 45
+    }
+  },
+  "combined_rate": 0.9333333333333333,
+  "evaluable_attempts": 45,
+  "pass_at_k": {
+    "groups": 15,
+    "max_k": 3,
+    "rates": {
+      "1": 0.9333333333333333,
+      "2": 0.9333333333333333,
+      "3": 0.9333333333333333
+    }
+  },
+  "provider_error_attempts": 0,
+  "provider_error_rate": 0.0,
+  "test1_rate": 1.0,
+  "test2_rate": 0.9333333333333333,
+  "total": 45,
+  "total_attempts": 45
+}

@@ -65,11 +65,17 @@
 - [x] Runner now retries transient provider errors and avoids caching them as sticky `provider_error` failures
 - [x] CI now validates `test` split schema/leakage checks (`--skip-lean`)
 - [x] CI smoke subsets now pick deterministic per-family rows by sorted IDs (ID-agnostic) and emit proper JSONL newlines
+- [x] CI smoke validations now write reports under `/tmp` instead of overwriting `dataset/validation_report.json`
+- [x] CI adds a tiny Lean smoke subset for `test` split
+- [x] Split policy now marks `test` as holdout (critical-fix-only; version bump on edits)
+- [x] Enum-context rows fixed to use valid Lean deriving syntax (`deriving DecidableEq` / `deriving Fintype`) in `dev` and `test`
+- [x] Targeted full Lean checks for affected enum-context subsets pass (`dev`: 6/6, `test`: 6/6)
+- [x] Gemini-only pilot baselines refreshed and promoted at `results/baselines/pilot/20260224_233417` (`k=1`) and `results/baselines/pilot/20260224_233637` (`k=3`)
 
 ## In Progress
-- [ ] Add refreshed Gemini pilot baseline at `k=3` for post-parser-fix comparison
+- [ ] Re-run full Lean-backed validation on `dev` and `test` after enum-context syntax fix in dataset rows
 
 ## Next Concrete Slice
-1. Refresh Gemini pilot baseline at `k=3` and promote artifacts.
+1. Complete full Lean-backed validation reruns for `dev` and `test` and address any remaining invalid rows.
 2. Expand `dev` with another curated Tier A batch while preserving cross-split leakage constraints.
-3. Populate and freeze holdout `test` split once dev loop stabilizes.
+3. Refresh mixed-provider pilot baselines once OpenAI provider issues are resolved.

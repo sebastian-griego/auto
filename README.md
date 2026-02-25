@@ -48,6 +48,12 @@ python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 - Lean toolchain: see `lean/lean-toolchain`
 - mathlib revision: see `lean/lakefile.lean`
 
+## Split policy
+- `pilot`: small, stable sanity/baseline split.
+- `dev`: active iteration split for checker and dataset refinement.
+- `test`: holdout split. Do not edit except critical correctness fixes.
+- Any `test` change should be treated as a benchmark version bump.
+
 ## Project docs
 - Full plan: `docs/plan_v1.md`
 - Protocol: `docs/protocol.md`
