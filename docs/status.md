@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-24
+- Date: 2026-02-25
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -71,11 +71,12 @@
 - [x] Enum-context rows fixed to use valid Lean deriving syntax (`deriving DecidableEq` / `deriving Fintype`) in `dev` and `test`
 - [x] Targeted full Lean checks for affected enum-context subsets pass (`dev`: 6/6, `test`: 6/6)
 - [x] Gemini-only pilot baselines refreshed and promoted at `results/baselines/pilot/20260224_233417` (`k=1`) and `results/baselines/pilot/20260224_233637` (`k=3`)
+- [x] Full Lean-backed validation reruns pass locally on `dev` (`total=100`, `invalid=0`) and `test` (`total=200`, `invalid=0`) after fixing `ftt_dev_0011` shape compatibility
 
 ## In Progress
-- [ ] Re-run full Lean-backed validation on `dev` and `test` after enum-context syntax fix in dataset rows
+- [ ] Produce a real Gemini baseline run on `dev` with prompt version `v1.0.0` and promote artifacts under `results/baselines/dev/`
 
 ## Next Concrete Slice
-1. Complete full Lean-backed validation reruns for `dev` and `test` and address any remaining invalid rows.
-2. Expand `dev` with another curated Tier A batch while preserving cross-split leakage constraints.
-3. Refresh mixed-provider pilot baselines once OpenAI provider issues are resolved.
+1. Run Gemini baseline on `dev` (`k=1`, prompt `v1.0.0`) and promote artifacts with `METADATA.txt`.
+2. Add a short v1 freeze note (prompt/test/checker/split lock) and tag or release commit.
+3. Run single frozen Gemini baseline on `test` (`k=1`) and promote artifacts.
