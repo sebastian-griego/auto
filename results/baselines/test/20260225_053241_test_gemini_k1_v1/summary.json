@@ -1,0 +1,91 @@
+{
+  "by_bucket": {
+    "pass": 179,
+    "provider_error": 1,
+    "semantic_fail": 19,
+    "shape_fail": 1
+  },
+  "by_family": {
+    "fin_truth_table": {
+      "combined_rate": 0.9854014598540146,
+      "total": 137
+    },
+    "ring_identity": {
+      "combined_rate": 0.7096774193548387,
+      "total": 62
+    }
+  },
+  "by_model": {
+    "gemini:gemini-2.5-pro": {
+      "by_bucket": {
+        "pass": 179,
+        "provider_error": 1,
+        "semantic_fail": 19,
+        "shape_fail": 1
+      },
+      "by_family": {
+        "fin_truth_table": {
+          "combined_rate": 0.9854014598540146,
+          "total": 137
+        },
+        "ring_identity": {
+          "combined_rate": 0.7096774193548387,
+          "total": 62
+        }
+      },
+      "by_split": {
+        "test": {
+          "combined_rate": 0.8994974874371859,
+          "total": 199
+        }
+      },
+      "by_tier": {
+        "A": {
+          "combined_rate": 0.8994974874371859,
+          "total": 199
+        }
+      },
+      "combined_rate": 0.8994974874371859,
+      "evaluable_attempts": 199,
+      "items": 200,
+      "pass_at_k": {
+        "groups": 199,
+        "max_k": 1,
+        "rates": {
+          "1": 0.8994974874371859
+        }
+      },
+      "provider_error_attempts": 1,
+      "test1_rate": 1.0,
+      "test2_rate": 0.8994974874371859,
+      "total_attempts": 200
+    }
+  },
+  "by_split": {
+    "test": {
+      "combined_rate": 0.8994974874371859,
+      "total": 199
+    }
+  },
+  "by_tier": {
+    "A": {
+      "combined_rate": 0.8994974874371859,
+      "total": 199
+    }
+  },
+  "combined_rate": 0.8994974874371859,
+  "evaluable_attempts": 199,
+  "pass_at_k": {
+    "groups": 199,
+    "max_k": 1,
+    "rates": {
+      "1": 0.8994974874371859
+    }
+  },
+  "provider_error_attempts": 1,
+  "provider_error_rate": 0.005,
+  "test1_rate": 1.0,
+  "test2_rate": 0.8994974874371859,
+  "total": 200,
+  "total_attempts": 200
+}

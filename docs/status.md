@@ -74,11 +74,15 @@
 - [x] Full Lean-backed validation reruns pass locally on `dev` (`total=100`, `invalid=0`) and `test` (`total=200`, `invalid=0`) after fixing `ftt_dev_0011` shape compatibility
 - [x] Gemini dev baseline promoted at `results/baselines/dev/20260225_051505_dev_gemini_k1_v1` (`k=1`, `prompt=v1.0.0`, combined rate `0.830`)
 - [x] v1 freeze policy and hashes documented at `docs/v1_freeze.md`
+- [x] Freeze tag created: `v1-freeze-20260225`
+- [x] Frozen Gemini test baseline promoted at `results/baselines/test/20260225_053241_test_gemini_k1_v1` (`k=1`, `prompt=v1.0.0`, combined rate `0.899`, provider errors `1`)
+- [x] v1 baseline analysis report added at `docs/v1_results.md` and linked from README
+- [x] v1.1 deterministic family expansion plan added at `docs/v1_1_plan.md`
 
 ## In Progress
-- [ ] Run single frozen Gemini baseline on `test` (`k=1`, `prompt=v1.0.0`) and promote artifacts under `results/baselines/test/`
+- [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts
 
 ## Next Concrete Slice
-1. Run and promote the single frozen Gemini baseline on `test` (`k=1`).
-2. Write `docs/v1_results.md` with split/family sizes, metric definitions, baseline tables, and concrete failure examples.
-3. Scope a deterministic v1.1 family expansion plan without changing frozen v1 results.
+1. If desired, add a `k=3` dev baseline companion run for calibration.
+2. Open v1.1 implementation branch for `set_equality_norm_v1` checker and validator/tag support.
+3. Prepare release notes that reference freeze tag + baseline artifact directories.
