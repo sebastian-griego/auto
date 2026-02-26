@@ -3,7 +3,7 @@
 ## Fixed defaults
 - `k = 1`
 - `temperature = 0.0`
-- `prompt_version = v1.0.0`
+- `prompt_version = v1.1.0`
 - Test1 heartbeats: `40000`
 - Test2 heartbeats: `200000`
 - Test1 timeout: `8s`
@@ -16,6 +16,7 @@
 - Prompt text is versioned in code at `harness/src/autoform_eval/prompt.py`.
 - Run artifacts include `prompt_version`, `prompt_hash`, and optional `prompt_text`.
 - If prompt text changes, bump `BENCHMARK_PROMPT_VERSION` and treat results as a new baseline.
+- Frozen v1 reruns should explicitly pass `--prompt-version v1.0.0`.
 
 ## Run command (reproducible local)
 ```bash
@@ -25,7 +26,7 @@ python -m autoform_eval.cli run \
   --models openai:mock \
   --mock \
   --k 1 \
-  --prompt-version v1.0.0
+  --prompt-version v1.1.0
 ```
 
 ## Run command (real providers)
@@ -38,7 +39,7 @@ python -m autoform_eval.cli run \
   --split pilot \
   --models openai:gpt-4.1-mini,gemini:gemini-2.5-pro \
   --k 1 \
-  --prompt-version v1.0.0
+  --prompt-version v1.1.0
 ```
 
 ## Pass@k

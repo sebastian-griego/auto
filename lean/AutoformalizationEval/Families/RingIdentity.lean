@@ -83,6 +83,39 @@ private def polyToString (poly : Poly) : String :=
 private def eqNormToString (eqNorm : Poly × Poly) : String :=
   s!"{polyToString eqNorm.1} = {polyToString eqNorm.2}"
 
+private def eqNormMatches (candNorm expNorm : Poly × Poly) : Bool :=
+  candNorm == expNorm || (candNorm.1 == expNorm.2 && candNorm.2 == expNorm.1)
+
+private def insertEverywhere {α : Type} (x : α) : List α → List (List α)
+  | [] => [[x]]
+  | y :: ys =>
+      (x :: y :: ys) :: (insertEverywhere x ys).map (fun zs => y :: zs)
+
+private def listPermutations {α : Type} : List α → List (List α)
+  | [] => [[]]
+  | x :: xs =>
+      (listPermutations xs).bind (insertEverywhere x)
+
+private def binderPermutations (arity : Nat) : List (Array Nat) :=
+  (listPermutations (List.range arity)).map List.toArray
+
+private def renameIndexByPerm (perm : Array Nat) (idx : Nat) : Nat :=
+  if h : idx < perm.size then
+    perm.get ⟨idx, h⟩
+  else
+    idx
+
+private def renameMonomial (mono : Monomial) (renameIdx : Nat → Nat) : Monomial :=
+  mono.map renameIdx
+
+private def renamePoly (poly : Poly) (renameIdx : Nat → Nat) : Poly :=
+  poly.foldl
+    (fun acc term => insertTerm (renameMonomial term.1 renameIdx) term.2 acc)
+    []
+
+private def renameEqNorm (eqNorm : Poly × Poly) (renameIdx : Nat → Nat) : Poly × Poly :=
+  (renamePoly eqNorm.1 renameIdx, renamePoly eqNorm.2 renameIdx)
+
 private def binderIndexOf? (binders : Array Expr) (e : Expr) : Option Nat :=
   match e with
   | .fvar fid =>
@@ -151,16 +184,8 @@ private def normalizeEquation (binders : Array Expr) (body : Expr) : MetaM (Poly
   | some (lhs, rhs) =>
       pure (← normalizeExpr binders lhs, ← normalizeExpr binders rhs)
 
-/--
-Deterministic semiring checker for a restricted grammar over:
-- binders (variables)
-- natural literals
-- `+`
-- `*`
-
-It compares normalized `(lhs, rhs)` pairs and allows swapping equation sides.
--/
-def checkRingIdentityNorm (cand expected : Expr) : MetaM Unit := do
+/-- Strict v1 checker: binder positions are compared directly (no binder permutation invariance). -/
+def checkRingIdentityNormV1 (cand expected : Expr) : MetaM Unit := do
   forallTelescopeReducing cand fun candXs candBody => do
     forallTelescopeReducing expected fun expXs expBody => do
       if candXs.size != expXs.size then
@@ -169,10 +194,37 @@ def checkRingIdentityNorm (cand expected : Expr) : MetaM Unit := do
       let candNorm ← normalizeEquation candXs candBody
       let expNorm ← normalizeEquation expXs expBody
 
-      let direct := candNorm == expNorm
-      let swapped := candNorm.1 == expNorm.2 && candNorm.2 == expNorm.1
-      unless (direct || swapped) do
+      unless eqNormMatches candNorm expNorm do
         throwError
           s!"[semantic_fail] ring_identity_mismatch cand_norm:{eqNormToString candNorm} expected_norm:{eqNormToString expNorm}"
+
+/--
+v2 checker for ring identities:
+- same normalization as v1
+- equation-side symmetry
+- invariant to permutations of leading binder indices
+-/
+def checkRingIdentityNormV2 (cand expected : Expr) : MetaM Unit := do
+  forallTelescopeReducing cand fun candXs candBody => do
+    forallTelescopeReducing expected fun expXs expBody => do
+      if candXs.size != expXs.size then
+        throwError "[semantic_fail] ring_binder_arity"
+
+      let candNorm ← normalizeEquation candXs candBody
+      let expNorm ← normalizeEquation expXs expBody
+      let perms := binderPermutations candXs.size
+
+      let matched :=
+        perms.any fun perm =>
+          let candRenamed := renameEqNorm candNorm (renameIndexByPerm perm)
+          eqNormMatches candRenamed expNorm
+
+      unless matched do
+        throwError
+          s!"[semantic_fail] ring_identity_mismatch cand_norm:{eqNormToString candNorm} expected_norm:{eqNormToString expNorm}"
+
+/-- Backward-compatible alias used by older callers. -/
+def checkRingIdentityNorm (cand expected : Expr) : MetaM Unit :=
+  checkRingIdentityNormV1 cand expected
 
 end AutoformalizationEval.Families

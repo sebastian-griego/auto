@@ -8,6 +8,7 @@ from typing import Any
 from .dataset import iter_all_splits, load_split
 from .lean_runner import classify_failure, run_lean_file
 from .mutate import generate_mutants
+from .prompt import BENCHMARK_PROMPT_VERSION
 from .parse import has_forbidden_tokens
 from .render import render_test1, render_test2
 from .types import DatasetItem
@@ -26,6 +27,7 @@ WS_RE = re.compile(r"\s+")
 LEADING_FORALL_RE = re.compile(r"^\s*(?:\u2200|forall)\s+([^:]+?)\s*:\s*([^,]+?)\s*,\s*(.*)$", re.DOTALL)
 FIN_TYPE_RE = re.compile(r"^Fin\s*\(?\s*(\d+)\s*\)?$")
 INDUCTIVE_RE = re.compile(r"^inductive\s+([A-Za-z_][A-Za-z0-9_']*)\b")
+BOOL_CONNECTIVES = ("&&", "||")
 
 
 def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
@@ -71,7 +73,78 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
                 issues.append("enum_cap_compute_error:no_finite_prefix")
             elif computed_cap != enum_cap:
                 issues.append(f"enum_cap_mismatch:tag={enum_cap}:computed={computed_cap}")
+
+        bool_eq_paren_issue = _fin_truth_table_bool_eq_parentheses_issue(item.expected)
+        if bool_eq_paren_issue is not None:
+            issues.append(bool_eq_paren_issue)
     return issues
+
+
+def _strip_leading_foralls(expr: str) -> str:
+    body = expr.strip()
+    while True:
+        match = LEADING_FORALL_RE.match(body)
+        if not match:
+            break
+        body = match.group(3).strip()
+    return body
+
+
+def _split_top_level_eq(expr: str) -> tuple[str, str] | None:
+    depth = 0
+    for idx, ch in enumerate(expr):
+        if ch == "(":
+            depth += 1
+            continue
+        if ch == ")":
+            if depth > 0:
+                depth -= 1
+            continue
+        if ch != "=" or depth != 0:
+            continue
+        prev = expr[idx - 1] if idx > 0 else ""
+        nxt = expr[idx + 1] if idx + 1 < len(expr) else ""
+        if prev in {":", "<", ">", "!"} or nxt == ">":
+            continue
+        lhs = expr[:idx].strip()
+        rhs = expr[idx + 1 :].strip()
+        if lhs and rhs:
+            return lhs, rhs
+        return None
+    return None
+
+
+def _contains_top_level_bool_connective(expr: str) -> bool:
+    depth = 0
+    idx = 0
+    while idx < len(expr):
+        ch = expr[idx]
+        if ch == "(":
+            depth += 1
+            idx += 1
+            continue
+        if ch == ")":
+            if depth > 0:
+                depth -= 1
+            idx += 1
+            continue
+        if depth == 0 and idx + 1 < len(expr) and expr[idx : idx + 2] in BOOL_CONNECTIVES:
+            return True
+        idx += 1
+    return False
+
+
+def _fin_truth_table_bool_eq_parentheses_issue(expected: str) -> str | None:
+    body = _strip_leading_foralls(expected)
+    split = _split_top_level_eq(body)
+    if split is None:
+        return None
+    lhs, rhs = split
+    if _contains_top_level_bool_connective(lhs):
+        return "fin_truth_table_bool_eq_parentheses:lhs"
+    if _contains_top_level_bool_connective(rhs):
+        return "fin_truth_table_bool_eq_parentheses:rhs"
+    return None
 
 
 def _parse_context_enum_sizes(context: str) -> dict[str, int]:
@@ -217,6 +290,7 @@ def _self_check(
     test2_heartbeats: int,
     timeout1_s: float,
     timeout2_s: float,
+    prompt_version: str,
 ) -> tuple[bool, list[str], dict[str, int]]:
     reasons: list[str] = []
     timings: dict[str, int] = {}
@@ -230,7 +304,13 @@ def _self_check(
         reasons.append(f"self_test1:{classify_failure(r1.stderr, r1.timed_out, r1.stdout)}")
         return False, reasons, timings
 
-    t2_content = render_test2(lean_dir, item, item.expected, test2_heartbeats)
+    t2_content = render_test2(
+        lean_dir,
+        item,
+        item.expected,
+        test2_heartbeats,
+        prompt_version=prompt_version,
+    )
     t2_path = work_dir / f"{item.id}.self.test2.lean"
     _write_rendered(t2_path, t2_content)
     r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
@@ -250,6 +330,7 @@ def _mutation_check(
     test2_heartbeats: int,
     timeout1_s: float,
     timeout2_s: float,
+    prompt_version: str,
 ) -> tuple[bool, list[str], dict[str, int]]:
     reasons: list[str] = []
     timings: dict[str, int] = {}
@@ -270,7 +351,13 @@ def _mutation_check(
             continue
 
         elaborating_mutants += 1
-        t2_content = render_test2(lean_dir, item, cand, test2_heartbeats)
+        t2_content = render_test2(
+            lean_dir,
+            item,
+            cand,
+            test2_heartbeats,
+            prompt_version=prompt_version,
+        )
         t2_path = work_dir / f"{item.id}.mut{idx}.test2.lean"
         _write_rendered(t2_path, t2_content)
         r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
@@ -299,6 +386,7 @@ def _determinism_check(
     timeout2_s: float,
     repeats: int,
     jitter_ms: int | None,
+    prompt_version: str,
 ) -> tuple[bool, list[str], dict[str, int]]:
     reasons: list[str] = []
     timings: dict[str, int] = {}
@@ -308,7 +396,13 @@ def _determinism_check(
     outcomes: list[tuple[bool, str]] = []
     elapsed_values: list[int] = []
     for idx in range(1, repeats + 1):
-        t2_content = render_test2(lean_dir, item, item.expected, test2_heartbeats)
+        t2_content = render_test2(
+            lean_dir,
+            item,
+            item.expected,
+            test2_heartbeats,
+            prompt_version=prompt_version,
+        )
         t2_path = work_dir / f"{item.id}.det{idx}.test2.lean"
         _write_rendered(t2_path, t2_content)
         r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
@@ -349,6 +443,7 @@ def validate_split(
     budget2_ms: int | None,
     determinism_repeats: int,
     determinism_jitter_ms: int | None,
+    prompt_version: str = BENCHMARK_PROMPT_VERSION,
 ) -> dict[str, Any]:
     items = load_split(dataset_dir, split)
     results: list[dict[str, Any]] = []
@@ -430,6 +525,7 @@ def validate_split(
                 test2_heartbeats=test2_heartbeats,
                 timeout1_s=timeout1_s,
                 timeout2_s=timeout2_s,
+                prompt_version=prompt_version,
             )
             entry["timings_ms"].update(timings_self)
             if not ok_self:
@@ -444,6 +540,7 @@ def validate_split(
                 test2_heartbeats=test2_heartbeats,
                 timeout1_s=timeout1_s,
                 timeout2_s=timeout2_s,
+                prompt_version=prompt_version,
             )
             entry["timings_ms"].update(timings_mut)
             if not ok_mut:
@@ -458,6 +555,7 @@ def validate_split(
                 timeout2_s=timeout2_s,
                 repeats=determinism_repeats,
                 jitter_ms=determinism_jitter_ms,
+                prompt_version=prompt_version,
             )
             entry["timings_ms"].update(timings_det)
             if not ok_det:

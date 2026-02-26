@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-25
+- Date: 2026-02-26
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -78,6 +78,15 @@
 - [x] Frozen Gemini test baseline promoted at `results/baselines/test/20260225_053241_test_gemini_k1_v1` (`k=1`, `prompt=v1.0.0`, combined rate `0.899`, provider errors `1`)
 - [x] v1 baseline analysis report added at `docs/v1_results.md` and linked from README
 - [x] v1.1 deterministic family expansion plan added at `docs/v1_1_plan.md`
+- [x] Added `ring_identity_norm_v2` checker variant (binder-permutation invariant) while preserving strict `ring_identity_norm_v1`
+- [x] Lean checker dispatch now accepts both ring fragment keys: `ring_identity_norm_v1` and `ring_identity_norm_v2`
+- [x] Prompt versioning now supports `v1.0.0` and `v1.1.0` (default `v1.1.0`), with ring fragment mapping switched to `ring_identity_norm_v2` in `v1.1.0`
+- [x] `fin_truth_table` prompt rules now explicitly require parentheses for `&&`/`||` inside equality
+- [x] Validator now lints `fin_truth_table` expected terms for unparenthesized top-level Bool connective equality sides
+- [x] Added ring regression harness (`scripts/run_ring_identity_regression.sh`) with Lean fixtures for v1/v2 binder reorder and real mismatch checks
+- [x] Targeted replay of frozen test ring semantic failures under `v1.1.0` flipped 16/17 to pass; `ring_test_0016` remained the only semantic failure
+- [x] Lean-backed pilot validation passes with prompt version `v1.1.0` (`total=15`, `invalid=0`)
+- [x] Offline replay of frozen dev candidates under `v1.1.0` yields combined `0.950` and `ring_identity` combined `1.000` (previous frozen dev combined `0.830`)
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

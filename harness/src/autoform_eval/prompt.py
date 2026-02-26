@@ -3,47 +3,65 @@ from __future__ import annotations
 from .types import DatasetItem
 
 
-BENCHMARK_PROMPT_VERSION = "v1.0.0"
+SUPPORTED_PROMPT_VERSIONS = ("v1.0.0", "v1.1.0")
+BENCHMARK_PROMPT_VERSION = "v1.1.0"
 
-_FRAGMENT_BY_CHECK_KEY = {
-    "ring_identity_norm": "ring_identity_norm_v1",
-    "fin_truth_table": "fin_truth_table_v1",
-    "set_equality_norm": "set_equality_norm_v0",
-}
-
-_FAMILY_FRAGMENT_RULES = {
-    "ring_identity": (
-        "Fragment ring_identity_norm_v1: use only forall binders, equality (=), natural numerals, "
-        "(+), (*), and parentheses."
-    ),
-    "fin_truth_table": (
-        "Fragment fin_truth_table_v1: use propositions over finite leading binders "
-        "(Bool, concrete Fin n, or small nullary enums from context) with logical connectives/equalities."
-    ),
-    "set_equality": (
-        "Fragment set_equality_norm_v0: use set equality statements only."
-    ),
+_FRAGMENT_BY_CHECK_KEY_BY_PROMPT = {
+    "v1.0.0": {
+        "ring_identity_norm": "ring_identity_norm_v1",
+        "fin_truth_table": "fin_truth_table_v1",
+        "set_equality_norm": "set_equality_norm_v0",
+    },
+    "v1.1.0": {
+        "ring_identity_norm": "ring_identity_norm_v2",
+        "fin_truth_table": "fin_truth_table_v1",
+        "set_equality_norm": "set_equality_norm_v0",
+    },
 }
 
 
-def fragment_for_item(item: DatasetItem) -> str:
+def is_supported_prompt_version(prompt_version: str) -> bool:
+    return prompt_version in SUPPORTED_PROMPT_VERSIONS
+
+
+def _fragment_map_for_prompt(prompt_version: str) -> dict[str, str]:
+    if not is_supported_prompt_version(prompt_version):
+        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
+        raise ValueError(f"unsupported prompt version '{prompt_version}' (supported: {supported})")
+    return _FRAGMENT_BY_CHECK_KEY_BY_PROMPT[prompt_version]
+
+
+def fragment_for_item(item: DatasetItem, prompt_version: str = BENCHMARK_PROMPT_VERSION) -> str:
     for tag in item.tags:
         if not tag.startswith("fragment:"):
             continue
         fragment = tag.split(":", 1)[1].strip()
         if fragment:
             return fragment
-    return _FRAGMENT_BY_CHECK_KEY.get(item.semantic.check, f"{item.semantic.check}_v1")
+    return _fragment_map_for_prompt(prompt_version).get(item.semantic.check, f"{item.semantic.check}_v1")
+
+
+def _family_rules(item: DatasetItem, fragment_key: str) -> str:
+    if item.family == "ring_identity":
+        return (
+            f"Fragment {fragment_key}: use only forall binders, equality (=), natural numerals, "
+            "(+), (*), and parentheses."
+        )
+    if item.family == "fin_truth_table":
+        return (
+            f"Fragment {fragment_key}: use propositions over finite leading binders "
+            "(Bool, concrete Fin n, or small nullary enums from context) with logical connectives/equalities. "
+            "When using Bool connectives (`&&` or `||`) inside equality, parenthesize them: write "
+            "`(a && b) = false` or `(a || b) = false`, not `a && b = false` or `a || b = false`."
+        )
+    if item.family == "set_equality":
+        return f"Fragment {fragment_key}: use set equality statements only."
+    return "Stay inside the declared family fragment."
 
 
 def build_prompt(item: DatasetItem, prompt_version: str = BENCHMARK_PROMPT_VERSION) -> str:
-    if prompt_version != BENCHMARK_PROMPT_VERSION:
-        raise ValueError(
-            f"unsupported prompt version '{prompt_version}' (supported: {BENCHMARK_PROMPT_VERSION})"
-        )
-
-    fragment_key = fragment_for_item(item)
-    family_rules = _FAMILY_FRAGMENT_RULES.get(item.family, "Stay inside the declared family fragment.")
+    fragment_key = fragment_for_item(item, prompt_version=prompt_version)
+    family_rules = _family_rules(item, fragment_key)
 
     parts = [
         f"Benchmark prompt version: {prompt_version}",

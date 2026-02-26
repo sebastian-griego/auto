@@ -68,12 +68,21 @@ private def requireFragmentKey (checkKey fragmentKey expectedFragment : String) 
     throwError
       s!"[semantic_fail] fragment_key_mismatch:{checkKey}:{fragmentKey}!={expectedFragment}"
 
+private def throwFragmentKeyMismatch (checkKey fragmentKey : String) (allowed : List String) : MetaM Unit := do
+  let expected := String.intercalate "|" allowed
+  throwError s!"[semantic_fail] fragment_key_mismatch:{checkKey}:{fragmentKey}!={expected}"
+
 /-- Dispatch into family-specific semantic checkers. -/
 def checkFamily (checkKey : String) (fragmentKey : String) (enumCap : Nat) (cand expected : Expr) : MetaM Unit := do
   match checkKey with
   | "ring_identity_norm" =>
-      requireFragmentKey checkKey fragmentKey "ring_identity_norm_v1"
-      Families.checkRingIdentityNorm cand expected
+      match fragmentKey with
+      | "ring_identity_norm_v1" =>
+          Families.checkRingIdentityNormV1 cand expected
+      | "ring_identity_norm_v2" =>
+          Families.checkRingIdentityNormV2 cand expected
+      | _ =>
+          throwFragmentKeyMismatch checkKey fragmentKey ["ring_identity_norm_v1", "ring_identity_norm_v2"]
   | "fin_truth_table" =>
       requireFragmentKey checkKey fragmentKey "fin_truth_table_v1"
       Families.checkFinTruthTable cand expected enumCap

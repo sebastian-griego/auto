@@ -23,7 +23,7 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 - Provider/API failures are bucketed as `provider_error` (separate from Lean failure buckets).
 - Transient provider failures are retried and not cached as sticky provider errors.
 - Summary semantic rates exclude `provider_error` attempts from denominators.
-- Prompt construction is versioned (`--prompt-version`, default `v1.0.0`) and recorded in run artifacts.
+- Prompt construction is versioned (`--prompt-version`, default `v1.1.0`) and recorded in run artifacts.
 
 ## Quickstart
 ```bash
@@ -36,6 +36,11 @@ Then:
 ```bash
 cd harness
 python -m autoform_eval.cli validate --split pilot
+```
+
+Run ring checker regressions:
+```bash
+make ring-regression
 ```
 
 Run a tiny mock eval:

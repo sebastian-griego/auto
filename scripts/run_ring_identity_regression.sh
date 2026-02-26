@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LEAN_DIR="$ROOT/lean"
+
+run_expect_pass() {
+  local rel="$1"
+  local abs="$LEAN_DIR/$rel"
+  if ! (cd "$LEAN_DIR" && lake env lean "$abs") >/tmp/auto_ring_regression.out 2>&1; then
+    cat /tmp/auto_ring_regression.out
+    echo "expected pass but failed: $rel" >&2
+    return 1
+  fi
+}
+
+run_expect_semantic_fail() {
+  local rel="$1"
+  local abs="$LEAN_DIR/$rel"
+  if (cd "$LEAN_DIR" && lake env lean "$abs") >/tmp/auto_ring_regression.out 2>&1; then
+    cat /tmp/auto_ring_regression.out
+    echo "expected failure but passed: $rel" >&2
+    return 1
+  fi
+  if ! rg -q "\\[semantic_fail\\]" /tmp/auto_ring_regression.out; then
+    cat /tmp/auto_ring_regression.out
+    echo "expected semantic_fail tag in output: $rel" >&2
+    return 1
+  fi
+}
+
+run_expect_pass "AutoformalizationEval/Regression/RingIdentityV2BinderPermutationPass.lean"
+run_expect_semantic_fail "AutoformalizationEval/Regression/RingIdentityV1BinderPermutationFail.lean"
+run_expect_semantic_fail "AutoformalizationEval/Regression/RingIdentityV2RealMismatchFail.lean"
+
+echo "ring_identity regression checks passed"

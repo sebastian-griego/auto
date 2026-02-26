@@ -3,6 +3,7 @@
 Date: 2026-02-25
 
 This note freezes the v1 benchmark surface area for headline results.
+The values below refer to tag `v1-freeze-20260225` and may differ on `main`.
 
 ## Frozen Surfaces
 

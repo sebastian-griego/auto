@@ -14,7 +14,13 @@ from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
 from .lean_runner import classify_failure, run_lean_file
 from .parse import parse_candidate
-from .prompt import BENCHMARK_PROMPT_VERSION, build_prompt, fragment_for_item
+from .prompt import (
+    BENCHMARK_PROMPT_VERSION,
+    SUPPORTED_PROMPT_VERSIONS,
+    build_prompt,
+    fragment_for_item,
+    is_supported_prompt_version,
+)
 from .render import render_test1, render_test2
 from .report import compute_summary, write_report, write_summary
 from .types import excerpt
@@ -185,7 +191,7 @@ def _run_attempt(
     provider_retry_backoff_s: float,
 ) -> dict[str, Any]:
     prompt = build_prompt(item, prompt_version=prompt_version)
-    fragment_key = fragment_for_item(item)
+    fragment_key = fragment_for_item(item, prompt_version=prompt_version)
     prompt_hash = stable_hash(prompt)
     prompt_text = prompt if save_prompt_text else None
 
@@ -362,7 +368,7 @@ def _run_attempt(
             "test2_stderr_log_path": "",
         }
 
-    t2_content = render_test2(lean_dir, item, candidate, hb2)
+    t2_content = render_test2(lean_dir, item, candidate, hb2, prompt_version=prompt_version)
     t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
     t2_path.write_text(t2_content, encoding="utf-8")
     t2_rendered_rel = str(t2_path.relative_to(run_dir))
@@ -440,6 +446,14 @@ def _run_attempt(
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    if not is_supported_prompt_version(args.prompt_version):
+        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
+        print(
+            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
+            file=sys.stderr,
+        )
+        return 2
+
     budget1_ms = args.budget1_ms if args.budget1_ms is not None else int(args.timeout1 * 1000)
     budget2_ms = args.budget2_ms if args.budget2_ms is not None else int(args.timeout2 * 1000)
     try:
@@ -458,6 +472,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
             budget2_ms=budget2_ms,
             determinism_repeats=args.determinism_repeats,
             determinism_jitter_ms=args.determinism_jitter_ms,
+            prompt_version=args.prompt_version,
         )
     except DatasetError as exc:
         print(f"dataset error: {exc}", file=sys.stderr)
@@ -500,9 +515,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
     if not mathlib_rev or mathlib_rev == "unknown":
         mathlib_rev = _read_mathlib_rev(lean_dir)
-    if args.prompt_version != BENCHMARK_PROMPT_VERSION:
+    if not is_supported_prompt_version(args.prompt_version):
+        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
         print(
-            f"unsupported prompt version '{args.prompt_version}' (supported: {BENCHMARK_PROMPT_VERSION})",
+            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
             file=sys.stderr,
         )
         return 2
@@ -544,7 +560,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "candidate_hash": "",
                         "prompt_hash": "",
                         "prompt_version": args.prompt_version,
-                        "fragment_key": fragment_for_item(item),
+                        "fragment_key": fragment_for_item(item, prompt_version=args.prompt_version),
                         "prompt_text": None,
                         "test1_rendered_path": "",
                         "test2_rendered_path": "",
@@ -647,6 +663,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--budget2-ms", type=int, default=None)
     validate.add_argument("--determinism-repeats", type=int, default=1)
     validate.add_argument("--determinism-jitter-ms", type=int, default=None)
+    validate.add_argument("--prompt-version", default=BENCHMARK_PROMPT_VERSION)
     validate.set_defaults(func=cmd_validate)
 
     run = sub.add_parser("run")

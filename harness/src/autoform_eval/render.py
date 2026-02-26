@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .prompt import fragment_for_item
+from .prompt import BENCHMARK_PROMPT_VERSION, fragment_for_item
 from .types import DatasetItem
 
 
@@ -53,7 +53,13 @@ def render_test1(lean_dir: Path, item: DatasetItem, candidate: str, heartbeats: 
     return _render_common(template, item, candidate, heartbeats)
 
 
-def render_test2(lean_dir: Path, item: DatasetItem, candidate: str, heartbeats: int) -> str:
+def render_test2(
+    lean_dir: Path,
+    item: DatasetItem,
+    candidate: str,
+    heartbeats: int,
+    prompt_version: str = BENCHMARK_PROMPT_VERSION,
+) -> str:
     template = _load_template(lean_dir, "Test2.lean.template")
     rendered = _render_common(template, item, candidate, heartbeats)
     enum_cap = _extract_enum_cap(item.tags)
@@ -66,6 +72,6 @@ def render_test2(lean_dir: Path, item: DatasetItem, candidate: str, heartbeats: 
         rendered.replace("{{EXPECTED}}", item.expected.strip())
         .replace("{{FAMILY}}", item.family)
         .replace("{{CHECK_KEY}}", item.semantic.check)
-        .replace("{{FRAGMENT_KEY}}", fragment_for_item(item))
+        .replace("{{FRAGMENT_KEY}}", fragment_for_item(item, prompt_version=prompt_version))
         .replace("{{ENUM_CAP}}", str(enum_cap))
     )
