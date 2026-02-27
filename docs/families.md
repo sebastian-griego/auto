@@ -24,3 +24,5 @@
   - `set_equality_norm_v1` (deterministic finite assignment + extensional side comparison)
 - `fin_truth_table` uses a per-item enum cap (from `enum_cap:<N>` tag) rendered into Test2 and checked in Lean.
 - `set_equality_norm_v1` uses per-item `set_enum_cap:<N>` metadata.
+- `set_equality` rows should keep expected terms in direct equality form (`A = B`) with set-typed sides.
+  Extensional membership forms (`∀ x, x ∈ A ↔ x ∈ B`) are intentionally out of fragment.

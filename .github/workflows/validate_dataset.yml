@@ -53,8 +53,8 @@ jobs:
           report = json.loads(report_path.read_text(encoding="utf-8"))
           total = int(report.get("total", -1))
           invalid = int(report.get("invalid", -1))
-          if total != 15:
-            raise SystemExit(f"pilot row count drifted: expected 15, got {total}")
+          if total != 23:
+            raise SystemExit(f"pilot row count drifted: expected 23, got {total}")
           if invalid != 0:
             raise SystemExit(f"pilot validation invalid count expected 0, got {invalid}")
           print(f"pilot validation summary ok: total={total}, invalid={invalid}")

@@ -98,11 +98,15 @@
 - [x] Set-equality mutation generation now uses same-shape semantic mutants (union/intersection, univ/empty, complement/numeral flips) instead of generic `¬expected`
 - [x] `set_equality_norm_v1` now has an early `isDefEq` fast path and richer mismatch witness payloads (`assignment` + carrier point + Bool side values)
 - [x] Set-equality prompt rules now explicitly require `A = B` output form and disallow `∀ x, x ∈ A ↔ x ∈ B` rewrites
+- [x] Pilot split expanded with 8 `set_equality` rows (set slice now exercised in CI/local validation; `pilot` total now 23)
+- [x] Validator now lints `set_equality` expected terms for direct set equality shape and enforces `set_enum_cap >= max(outer_assignments, carrier_size)` when computable
+- [x] Set-equality regression pack now covers defeq fast-path pass, real semantic mismatch fail with carrier witness detail, and strict shape rejection for extensional-form candidates
+- [x] Lean-backed validation passes for set-only pilot slice (`total=8`, `invalid=0`) under prompt version `v1.1.0`
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts
 
 ## Next Concrete Slice
-1. Add an initial `set_equality` dataset slice (`pilot`: 3-5 rows, `dev`: 10-20 rows) with `set_enum_cap` tags.
+1. Expand `dev` with 20-40 `set_equality` rows covering mixed operators and 2-3 finite binders.
 2. Run/promote real `v1.1.0` baselines on `pilot` and `dev` (at least `k=1`) and add `docs/v1_1_results.md`.
 3. Refresh release notes/status links so frozen v1 (`v1.0.0`) and current v1.1 (`v1.1.0`) flows are both explicit.

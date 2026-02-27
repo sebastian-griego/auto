@@ -22,7 +22,8 @@ Chosen family for v1.1: **`set_equality` upgrade** (replace placeholder `set_equ
 - Accepted semantic form (deterministic subset):
   - Outer binders may include finite domains already supported by `fin_truth_table` (`Bool`, `Fin n`, small nullary enums, small `Fintype` fallback with cap).
   - Set target type must be finite and decidable.
-  - Body shape must represent set equality over that target type (direct equality or membership-equivalent normalized form).
+  - Body shape must be direct set equality over that target type (`A = B`).
+  - Extensional rewrites like `∀ x, x ∈ A ↔ x ∈ B` are out-of-fragment for v1.1 and should be rejected by shape checks.
 
 ## Checker Design (Deterministic)
 

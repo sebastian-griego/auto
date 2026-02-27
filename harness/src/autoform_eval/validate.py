@@ -28,6 +28,8 @@ LEADING_FORALL_RE = re.compile(r"^\s*(?:\u2200|forall)\s+([^:]+?)\s*:\s*([^,]+?)
 FIN_TYPE_RE = re.compile(r"^Fin\s*\(?\s*(\d+)\s*\)?$")
 INDUCTIVE_RE = re.compile(r"^inductive\s+([A-Za-z_][A-Za-z0-9_']*)\b")
 BOOL_CONNECTIVES = ("&&", "||")
+SET_TYPE_PREFIX_RE = re.compile(r":\s*Set\b")
+SET_SIDE_MARKERS = ("Set.", "∅", "∪", "∩", "ᶜ", "\\", "singleton")
 
 
 def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
@@ -82,6 +84,10 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
         if bool_eq_paren_issue is not None:
             issues.append(bool_eq_paren_issue)
     elif item.family == "set_equality":
+        set_shape_issue = _set_equality_shape_issue(item.expected)
+        if set_shape_issue is not None:
+            issues.append(set_shape_issue)
+
         set_enum_cap = _extract_int_tag(item.tags, "set_enum_cap:")
         if set_enum_cap is None:
             issues.append("missing_tag:set_enum_cap")
@@ -89,6 +95,19 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
             issues.append("invalid_tag:set_enum_cap")
         elif set_enum_cap > 4096:
             issues.append(f"set_enum_cap_exceeded:{set_enum_cap}>4096")
+        else:
+            required_cap, reason = _compute_set_required_enum_cap(item)
+            if reason is not None:
+                issues.append(f"set_enum_cap_compute_error:{reason}")
+            elif required_cap is None:
+                issues.append("set_enum_cap_compute_error:unknown")
+            elif set_enum_cap < required_cap:
+                outer_count, carrier_size, _ = _set_cap_components(item)
+                issues.append(
+                    "set_enum_cap_too_small:"
+                    f"tag={set_enum_cap}:required={required_cap}:"
+                    f"outer={outer_count}:carrier={carrier_size}"
+                )
     return issues
 
 
@@ -157,6 +176,60 @@ def _fin_truth_table_bool_eq_parentheses_issue(expected: str) -> str | None:
     if _contains_top_level_bool_connective(rhs):
         return "fin_truth_table_bool_eq_parentheses:rhs"
     return None
+
+
+def _set_equality_shape_issue(expected: str) -> str | None:
+    body = _strip_leading_foralls(expected)
+    split = _split_top_level_eq(body)
+    if split is None:
+        return "set_equality_expected_not_eq"
+    lhs, rhs = split
+    if not _set_side_is_set_like(lhs):
+        return "set_equality_expected_nonset_lhs"
+    if not _set_side_is_set_like(rhs):
+        return "set_equality_expected_nonset_rhs"
+    return None
+
+
+def _set_side_is_set_like(side: str) -> bool:
+    text = side.strip()
+    if not text:
+        return False
+    if SET_TYPE_PREFIX_RE.search(text):
+        return True
+    if text.startswith("fun ") or text.startswith("λ"):
+        return True
+    return any(marker in text for marker in SET_SIDE_MARKERS)
+
+
+def _extract_set_carrier_type(side: str) -> str | None:
+    match = SET_TYPE_PREFIX_RE.search(side)
+    if not match:
+        return None
+
+    rest = side[match.end() :].lstrip()
+    if not rest:
+        return None
+    if rest[0] == "(":
+        depth = 0
+        for idx, ch in enumerate(rest):
+            if ch == "(":
+                depth += 1
+                continue
+            if ch == ")":
+                depth -= 1
+                if depth == 0:
+                    ty = rest[1:idx].strip()
+                    return ty or None
+        return None
+
+    chars: list[str] = []
+    for ch in rest:
+        if ch.isspace() or ch in {",", "=", ")"}:
+            break
+        chars.append(ch)
+    ty = "".join(chars).strip()
+    return ty or None
 
 
 def _parse_context_enum_sizes(context: str) -> dict[str, int]:
@@ -235,6 +308,72 @@ def _compute_enum_cap_from_item(item: DatasetItem) -> tuple[int | None, str | No
     if not saw_finite_binder:
         return None, None
     return cap, None
+
+
+def _compute_set_outer_assignment_count(item: DatasetItem) -> tuple[int | None, str | None]:
+    expected = item.expected.strip()
+    enum_sizes = _parse_context_enum_sizes(item.context)
+    cap = 1
+    while True:
+        match = LEADING_FORALL_RE.match(expected)
+        if not match:
+            break
+
+        vars_part = match.group(1).strip()
+        ty_part = match.group(2).strip()
+        expected = match.group(3).strip()
+
+        var_names = [v for v in vars_part.split() if v]
+        if not var_names:
+            return None, "binder_parse"
+
+        domain_size = _finite_domain_size(ty_part, enum_sizes)
+        if domain_size is None:
+            return None, f"unsupported_outer_binder_type:{ty_part}"
+
+        for _ in var_names:
+            cap *= domain_size
+
+    return cap, None
+
+
+def _compute_set_carrier_size(item: DatasetItem) -> tuple[int | None, str | None]:
+    body = _strip_leading_foralls(item.expected)
+    split = _split_top_level_eq(body)
+    if split is None:
+        return None, "expected_not_eq"
+    lhs, rhs = split
+
+    carrier_ty = _extract_set_carrier_type(lhs) or _extract_set_carrier_type(rhs)
+    if carrier_ty is None:
+        return None, "carrier_type_missing"
+
+    enum_sizes = _parse_context_enum_sizes(item.context)
+    carrier_size = _finite_domain_size(carrier_ty, enum_sizes)
+    if carrier_size is None:
+        return None, f"unsupported_carrier_type:{carrier_ty}"
+    return carrier_size, None
+
+
+def _set_cap_components(item: DatasetItem) -> tuple[int | None, int | None, str | None]:
+    outer_count, outer_reason = _compute_set_outer_assignment_count(item)
+    if outer_reason is not None:
+        return None, None, outer_reason
+
+    carrier_size, carrier_reason = _compute_set_carrier_size(item)
+    if carrier_reason is not None:
+        return None, None, carrier_reason
+
+    return outer_count, carrier_size, None
+
+
+def _compute_set_required_enum_cap(item: DatasetItem) -> tuple[int | None, str | None]:
+    outer_count, carrier_size, reason = _set_cap_components(item)
+    if reason is not None:
+        return None, reason
+    if outer_count is None or carrier_size is None:
+        return None, "unknown"
+    return max(outer_count, carrier_size), None
 
 
 def _normalize_text(value: str) -> str:
