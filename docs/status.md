@@ -95,11 +95,14 @@
 - [x] Validator/render now support `set_enum_cap:<N>` tags for `set_equality` items
 - [x] Added set-equality regression harness (`scripts/run_set_equality_regression.sh`) with pass/fail Lean fixtures
 - [x] Lean-backed pilot validation still passes with prompt version `v1.1.0` (`total=15`, `invalid=0`) after set-equality checker upgrade
+- [x] Set-equality mutation generation now uses same-shape semantic mutants (union/intersection, univ/empty, complement/numeral flips) instead of generic `¬expected`
+- [x] `set_equality_norm_v1` now has an early `isDefEq` fast path and richer mismatch witness payloads (`assignment` + carrier point + Bool side values)
+- [x] Set-equality prompt rules now explicitly require `A = B` output form and disallow `∀ x, x ∈ A ↔ x ∈ B` rewrites
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts
 
 ## Next Concrete Slice
-1. If desired, add a `k=3` dev baseline companion run for calibration.
-2. Open v1.1 implementation branch for `set_equality_norm_v1` checker and validator/tag support.
-3. Prepare release notes that reference freeze tag + baseline artifact directories.
+1. Add an initial `set_equality` dataset slice (`pilot`: 3-5 rows, `dev`: 10-20 rows) with `set_enum_cap` tags.
+2. Run/promote real `v1.1.0` baselines on `pilot` and `dev` (at least `k=1`) and add `docs/v1_1_results.md`.
+3. Refresh release notes/status links so frozen v1 (`v1.0.0`) and current v1.1 (`v1.1.0`) flows are both explicit.

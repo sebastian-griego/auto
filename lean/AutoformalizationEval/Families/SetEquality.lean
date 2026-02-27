@@ -230,7 +230,8 @@ private def evalPropAsBool (prop : Expr) : MetaM Bool := do
     else
       throwError "[semantic_fail] set_equality_noncomputable"
 
-private def sideExtEq (carrier lhs rhs : Expr) (enumCap : Nat) : MetaM Bool := do
+private def sideExtEqMismatch? (carrier lhs rhs : Expr) (enumCap : Nat)
+    : MetaM (Option (Expr × Bool × Bool)) := do
   let vals ← carrierValues carrier
   if vals.isEmpty then
     throwError "[semantic_fail] set_carrier_empty"
@@ -240,8 +241,17 @@ private def sideExtEq (carrier lhs rhs : Expr) (enumCap : Nat) : MetaM Bool := d
     let lhsVal ← evalPropAsBool (mkApp lhs x)
     let rhsVal ← evalPropAsBool (mkApp rhs x)
     if lhsVal != rhsVal then
-      return false
-  return true
+      return some (x, lhsVal, rhsVal)
+  return none
+
+private def boolAsString (b : Bool) : String :=
+  if b then "true" else "false"
+
+private def mismatchDetail (label : String) (mismatch : Expr × Bool × Bool) : MetaM String := do
+  let (x, lhsVal, rhsVal) := mismatch
+  let xFmt ← ppExpr x
+  pure
+    s!"{label}:x={xFmt.pretty}, lhs={boolAsString lhsVal}, rhs={boolAsString rhsVal}"
 
 /-- Placeholder v0 checker retained for compatibility with frozen configurations. -/
 def checkSetEqualityV0 (cand expected : Expr) : MetaM Unit := do
@@ -257,37 +267,53 @@ v1 deterministic checker for set equalities:
 - allow swapping equation sides
 -/
 def checkSetEqualityV1 (cand expected : Expr) (enumCap : Nat) : MetaM Unit := do
-  forallTelescopeReducing cand fun candXs candBody => do
-    forallTelescopeReducing expected fun expXs expBody => do
-      if candXs.size != expXs.size then
-        throwError "[semantic_fail] set_binder_arity"
+  if (← isDefEq cand expected) then
+    pure ()
+  else
+    forallTelescopeReducing cand fun candXs candBody => do
+      forallTelescopeReducing expected fun expXs expBody => do
+        if candXs.size != expXs.size then
+          throwError "[semantic_fail] set_binder_arity"
 
-      let expectedBodyMapped := expBody.replaceFVars expXs candXs
-      let (domains, _) ← collectDomains candXs enumCap
-      let assignments := allAssignments domains
-      let candFn ← mkLambdaFVars candXs candBody
-      let expFn ← mkLambdaFVars candXs expectedBodyMapped
+        let expectedBodyMapped := expBody.replaceFVars expXs candXs
+        let (domains, _) ← collectDomains candXs enumCap
+        let assignments := allAssignments domains
+        let candFn ← mkLambdaFVars candXs candBody
+        let expFn ← mkLambdaFVars candXs expectedBodyMapped
 
-      for vals in assignments do
-        let candInst ← whnf (mkAppN candFn vals)
-        let expInst ← whnf (mkAppN expFn vals)
+        for vals in assignments do
+          let candInst ← whnf (mkAppN candFn vals)
+          let expInst ← whnf (mkAppN expFn vals)
 
-        let some (candCarrier, candLhs, candRhs) ← eqSetSides? candInst
-          | throwError "[semantic_fail] set_expected_equality"
-        let some (expCarrier, expLhs, expRhs) ← eqSetSides? expInst
-          | throwError "[semantic_fail] set_expected_equality"
+          let some (candCarrier, candLhs, candRhs) ← eqSetSides? candInst
+            | throwError "[semantic_fail] set_expected_equality"
+          let some (expCarrier, expLhs, expRhs) ← eqSetSides? expInst
+            | throwError "[semantic_fail] set_expected_equality"
 
-        unless (← isDefEq candCarrier expCarrier) do
-          throwError "[semantic_fail] set_carrier_mismatch"
+          unless (← isDefEq candCarrier expCarrier) do
+            throwError "[semantic_fail] set_carrier_mismatch"
 
-        let directLhs ← sideExtEq candCarrier candLhs expLhs enumCap
-        let directRhs ← sideExtEq candCarrier candRhs expRhs enumCap
-        let swappedLhs ← sideExtEq candCarrier candLhs expRhs enumCap
-        let swappedRhs ← sideExtEq candCarrier candRhs expLhs enumCap
+          let directLhsMismatch ← sideExtEqMismatch? candCarrier candLhs expLhs enumCap
+          let directRhsMismatch ← sideExtEqMismatch? candCarrier candRhs expRhs enumCap
+          let swappedLhsMismatch ← sideExtEqMismatch? candCarrier candLhs expRhs enumCap
+          let swappedRhsMismatch ← sideExtEqMismatch? candCarrier candRhs expLhs enumCap
 
-        unless ((directLhs && directRhs) || (swappedLhs && swappedRhs)) do
-          let witness := (← assignmentToString candXs vals)
-          throwError s!"[semantic_fail] set_equality_mismatch:{witness}"
+          let directOk := directLhsMismatch.isNone && directRhsMismatch.isNone
+          let swappedOk := swappedLhsMismatch.isNone && swappedRhsMismatch.isNone
+          unless (directOk || swappedOk) do
+            let witness := (← assignmentToString candXs vals)
+            let detail ←
+              if let some m := directLhsMismatch then
+                mismatchDetail "direct_lhs" m
+              else if let some m := directRhsMismatch then
+                mismatchDetail "direct_rhs" m
+              else if let some m := swappedLhsMismatch then
+                mismatchDetail "swapped_lhs" m
+              else if let some m := swappedRhsMismatch then
+                mismatchDetail "swapped_rhs" m
+              else
+                pure "no_detail"
+            throwError s!"[semantic_fail] set_equality_mismatch:{witness};{detail}"
 
 /-- Backward-compatible alias. -/
 def checkSetEquality (cand expected : Expr) : MetaM Unit :=

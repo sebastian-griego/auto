@@ -56,7 +56,11 @@ def _family_rules(item: DatasetItem, fragment_key: str) -> str:
             "`(a && b) = false` or `(a || b) = false`, not `a && b = false` or `a || b = false`."
         )
     if item.family == "set_equality":
-        return f"Fragment {fragment_key}: use set equality statements only."
+        return (
+            f"Fragment {fragment_key}: output must be a set equality statement of the form "
+            "`..., A = B`, where `A` and `B` are sets (`Set α` or `α → Prop`). "
+            "Do not rewrite as an extensional proposition like `∀ x, x ∈ A ↔ x ∈ B`."
+        )
     return "Stay inside the declared family fragment."
 
 

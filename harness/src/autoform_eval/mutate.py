@@ -54,12 +54,45 @@ def _mutate_fin_truth_table(expr: str) -> list[str]:
     return muts
 
 
+def _mutate_set_equality(expr: str) -> list[str]:
+    muts: list[str] = []
+
+    for old, new in (
+        ("∪", "∩"),
+        ("∩", "∪"),
+        ("Set.union", "Set.inter"),
+        ("Set.inter", "Set.union"),
+        ("Set.univ", "∅"),
+        ("∅", "Set.univ"),
+    ):
+        m = _replace_first(expr, old, new)
+        if m:
+            muts.append(m)
+
+    # Flip a small numeral in equality predicates (e.g. `x = 0` -> `x = 1`).
+    num_eq = re.search(r"=\s*(\d+)\b", expr)
+    if num_eq:
+        start, end = num_eq.span(1)
+        value = int(num_eq.group(1))
+        replacement = 1 if value == 0 else 0
+        muts.append(f"{expr[:start]}{replacement}{expr[end:]}")
+
+    if "ᶜ" in expr:
+        muts.append(expr.replace("ᶜ", "", 1))
+    if "Set.compl " in expr:
+        muts.append(expr.replace("Set.compl ", "", 1))
+
+    return muts
+
+
 def generate_mutants(item: DatasetItem, max_mutants: int = 3) -> list[str]:
     expected = item.expected
     if item.family == "ring_identity":
         muts = _mutate_ring(expected)
     elif item.family == "fin_truth_table":
         muts = _mutate_fin_truth_table(expected)
+    elif item.family == "set_equality":
+        muts = _mutate_set_equality(expected)
     else:
         muts = [f"¬({expected})"]
 
