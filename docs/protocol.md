@@ -1,6 +1,6 @@
 # Baseline Protocol (v1 bootstrap)
 
-## Fixed defaults
+## Fixed defaults (current work)
 - `k = 1`
 - `temperature = 0.0`
 - `prompt_version = v1.1.0`
@@ -12,11 +12,15 @@
   - `budget1_ms = timeout1 * 1000`
   - `budget2_ms = timeout2 * 1000`
 
+## Frozen v1 reproduction
+- Always pass `--prompt-version v1.0.0` for frozen-v1 reruns.
+- Frozen-v1 headline artifacts remain those listed in `docs/v1_freeze.md`.
+
 ## Benchmark prompt
 - Prompt text is versioned in code at `harness/src/autoform_eval/prompt.py`.
 - Run artifacts include `prompt_version`, `prompt_hash`, and optional `prompt_text`.
 - If prompt text changes, bump `BENCHMARK_PROMPT_VERSION` and treat results as a new baseline.
-- Frozen v1 reruns should explicitly pass `--prompt-version v1.0.0`.
+- Frozen-v1 reruns should explicitly pass `--prompt-version v1.0.0`.
 
 ## Run command (reproducible local)
 ```bash

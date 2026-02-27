@@ -25,9 +25,9 @@ def _load_template(lean_dir: Path, name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _extract_enum_cap(tags: list[str]) -> int | None:
+def _extract_int_tag(tags: list[str], prefix: str) -> int | None:
     for tag in tags:
-        if not tag.startswith("enum_cap:"):
+        if not tag.startswith(prefix):
             continue
         raw = tag.split(":", 1)[1].strip()
         if raw.isdigit():
@@ -62,10 +62,13 @@ def render_test2(
 ) -> str:
     template = _load_template(lean_dir, "Test2.lean.template")
     rendered = _render_common(template, item, candidate, heartbeats)
-    enum_cap = _extract_enum_cap(item.tags)
     if item.family == "fin_truth_table":
+        enum_cap = _extract_int_tag(item.tags, "enum_cap:")
         # Fail closed when tag metadata is missing or malformed.
         enum_cap = enum_cap if enum_cap is not None else 0
+    elif item.family == "set_equality":
+        set_enum_cap = _extract_int_tag(item.tags, "set_enum_cap:")
+        enum_cap = set_enum_cap if set_enum_cap is not None else 0
     else:
         enum_cap = 0
     return (

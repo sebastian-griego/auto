@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-26
+- Date: 2026-02-27
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -87,6 +87,14 @@
 - [x] Targeted replay of frozen test ring semantic failures under `v1.1.0` flipped 16/17 to pass; `ring_test_0016` remained the only semantic failure
 - [x] Lean-backed pilot validation passes with prompt version `v1.1.0` (`total=15`, `invalid=0`)
 - [x] Offline replay of frozen dev candidates under `v1.1.0` yields combined `0.950` and `ring_identity` combined `1.000` (previous frozen dev combined `0.830`)
+- [x] Ring prompt rules now explicitly warn about noncommutative multiplication order (`do not reorder factors`)
+- [x] Protocol docs now distinguish current default prompt (`v1.1.0`) from frozen-v1 reproduction (`v1.0.0`)
+- [x] Added `set_equality_norm_v1` deterministic checker path (finite assignment enumeration with enum cap + extensional side comparison, with equation-side swap)
+- [x] Preserved compatibility path `set_equality_norm_v0` and versioned dispatch now accepts both `_v0` and `_v1`
+- [x] Prompt mapping for `set_equality_norm` now targets `set_equality_norm_v1` under `v1.1.0`
+- [x] Validator/render now support `set_enum_cap:<N>` tags for `set_equality` items
+- [x] Added set-equality regression harness (`scripts/run_set_equality_regression.sh`) with pass/fail Lean fixtures
+- [x] Lean-backed pilot validation still passes with prompt version `v1.1.0` (`total=15`, `invalid=0`) after set-equality checker upgrade
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

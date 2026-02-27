@@ -1,4 +1,4 @@
-.PHONY: setup lean-build validate ring-regression
+.PHONY: setup lean-build validate ring-regression set-regression
 
 setup:
 	./scripts/setup.sh
@@ -11,3 +11,6 @@ validate:
 
 ring-regression:
 	./scripts/run_ring_identity_regression.sh
+
+set-regression:
+	./scripts/run_set_equality_regression.sh

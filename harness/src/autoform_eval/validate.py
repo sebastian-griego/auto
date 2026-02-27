@@ -45,8 +45,12 @@ def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
 
 
 def _extract_enum_cap(tags: list[str]) -> int | None:
+    return _extract_int_tag(tags, "enum_cap:")
+
+
+def _extract_int_tag(tags: list[str], prefix: str) -> int | None:
     for tag in tags:
-        if not tag.startswith("enum_cap:"):
+        if not tag.startswith(prefix):
             continue
         value = tag.split(":", 1)[1].strip()
         if not value.isdigit():
@@ -77,6 +81,14 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
         bool_eq_paren_issue = _fin_truth_table_bool_eq_parentheses_issue(item.expected)
         if bool_eq_paren_issue is not None:
             issues.append(bool_eq_paren_issue)
+    elif item.family == "set_equality":
+        set_enum_cap = _extract_int_tag(item.tags, "set_enum_cap:")
+        if set_enum_cap is None:
+            issues.append("missing_tag:set_enum_cap")
+        elif set_enum_cap < 0:
+            issues.append("invalid_tag:set_enum_cap")
+        elif set_enum_cap > 4096:
+            issues.append(f"set_enum_cap_exceeded:{set_enum_cap}>4096")
     return issues
 
 

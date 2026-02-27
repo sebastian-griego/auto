@@ -24,6 +24,7 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 - Transient provider failures are retried and not cached as sticky provider errors.
 - Summary semantic rates exclude `provider_error` attempts from denominators.
 - Prompt construction is versioned (`--prompt-version`, default `v1.1.0`) and recorded in run artifacts.
+- For frozen v1 reproduction, pass `--prompt-version v1.0.0`.
 
 ## Quickstart
 ```bash

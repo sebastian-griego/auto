@@ -87,8 +87,13 @@ def checkFamily (checkKey : String) (fragmentKey : String) (enumCap : Nat) (cand
       requireFragmentKey checkKey fragmentKey "fin_truth_table_v1"
       Families.checkFinTruthTable cand expected enumCap
   | "set_equality_norm" =>
-      requireFragmentKey checkKey fragmentKey "set_equality_norm_v0"
-      Families.checkSetEquality cand expected
+      match fragmentKey with
+      | "set_equality_norm_v0" =>
+          Families.checkSetEqualityV0 cand expected
+      | "set_equality_norm_v1" =>
+          Families.checkSetEqualityV1 cand expected enumCap
+      | _ =>
+          throwFragmentKeyMismatch checkKey fragmentKey ["set_equality_norm_v0", "set_equality_norm_v1"]
   | _ => throwError "[semantic_fail] unknown_check_key:{checkKey}"
 
 /-- Command-level entrypoint used by rendered Test2 files. -/

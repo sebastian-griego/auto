@@ -20,5 +20,7 @@
   - `ring_identity_norm_v1`
   - `ring_identity_norm_v2`
   - `fin_truth_table_v1`
-  - `set_equality_norm_v0` (Tier B placeholder)
+  - `set_equality_norm_v0` (compatibility path)
+  - `set_equality_norm_v1` (deterministic finite assignment + extensional side comparison)
 - `fin_truth_table` uses a per-item enum cap (from `enum_cap:<N>` tag) rendered into Test2 and checked in Lean.
+- `set_equality_norm_v1` uses per-item `set_enum_cap:<N>` metadata.

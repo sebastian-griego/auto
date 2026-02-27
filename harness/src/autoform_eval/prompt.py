@@ -15,7 +15,7 @@ _FRAGMENT_BY_CHECK_KEY_BY_PROMPT = {
     "v1.1.0": {
         "ring_identity_norm": "ring_identity_norm_v2",
         "fin_truth_table": "fin_truth_table_v1",
-        "set_equality_norm": "set_equality_norm_v0",
+        "set_equality_norm": "set_equality_norm_v1",
     },
 }
 
@@ -45,7 +45,8 @@ def _family_rules(item: DatasetItem, fragment_key: str) -> str:
     if item.family == "ring_identity":
         return (
             f"Fragment {fragment_key}: use only forall binders, equality (=), natural numerals, "
-            "(+), (*), and parentheses."
+            "(+), (*), and parentheses. Multiplication may be noncommutative: do not reorder factors "
+            "and do not move factors across `*`."
         )
     if item.family == "fin_truth_table":
         return (
