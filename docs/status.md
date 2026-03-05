@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-02-27
+- Date: 2026-03-03
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -102,6 +102,10 @@
 - [x] Validator now lints `set_equality` expected terms for direct set equality shape and enforces `set_enum_cap >= max(outer_assignments, carrier_size)` when computable
 - [x] Set-equality regression pack now covers defeq fast-path pass, real semantic mismatch fail with carrier witness detail, and strict shape rejection for extensional-form candidates
 - [x] Lean-backed validation passes for set-only pilot slice (`total=8`, `invalid=0`) under prompt version `v1.1.0`
+- [x] `fin_truth_table` fallback (`Fintype`-based) path now enforces the same non-constant reference guard as explicit enumeration (`[semantic_fail] truth_table_reference_constant`)
+- [x] Prompt version `v1.2.0` added (default unchanged at `v1.1.0`) with `fin_truth_table` rules updated for `Fintype.card`-literal finite binders
+- [x] Validator finite-size recomputation now supports recursive finite types (`Bool`, `Fin n`, context enums, `Zmod n`, `×`, `→`/`->`, parentheses) for `enum_cap`/`set_enum_cap` checks
+- [x] Added harness smoke module (`python -m autoform_eval.smoke_tests`) and wired it into `validate_dataset` CI
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

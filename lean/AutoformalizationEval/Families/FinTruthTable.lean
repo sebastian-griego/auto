@@ -1,6 +1,7 @@
 import Lean
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Card
+import Mathlib.Data.Fintype.Pi
 
 open Lean Meta
 
@@ -77,11 +78,17 @@ private def binderDomain? (ty : Expr) : MetaM (Option Domain) := do
 
 private def fintypeCard? (ty : Expr) : MetaM (Option Nat) := do
   let ty ← whnf ty
-  let fintypeTy := mkApp (mkConst ``Fintype) ty
+  let tyType ← inferType ty
+  let u :=
+    match tyType.consumeMData with
+    | .sort (.succ u) => u
+    | .sort u => u
+    | _ => Level.zero
+  let fintypeTy := mkApp (mkConst ``Fintype [u]) ty
   match (← synthInstance? fintypeTy) with
   | none => pure none
   | some inst =>
-      let cardExpr := mkApp2 (mkConst ``Fintype.card) ty inst
+      let cardExpr := mkApp2 (mkConst ``Fintype.card [u]) ty inst
       let cardWhnf ← whnf cardExpr
       match natLitValue? cardWhnf with
       | some n => pure (some n)
@@ -152,6 +159,20 @@ private def allAssignments (domains : Array Domain) : List (Array Expr) :=
 private def assignmentCount (domains : Array Domain) : Nat :=
   domains.foldl (fun acc d => acc * domainSize d) 1
 
+private def mkExistsFVars (fvars : Array Expr) (body : Expr) : MetaM Expr := do
+  let mut out := body
+  for fvar in fvars.toList.reverse do
+    let decl ← fvar.fvarId!.getDecl
+    let declTyTy ← inferType decl.type
+    let u :=
+      match declTyTy.consumeMData with
+      | .sort (.succ u) => u
+      | .sort u => u
+      | _ => Level.zero
+    let lam ← mkLambdaFVars #[fvar] out
+    out := mkApp2 (mkConst ``Exists [u]) decl.type lam
+  pure out
+
 private def evalPropAsBool (prop : Expr) : MetaM Bool := do
   let decideExpr ← mkDecide prop
   let reduced ← whnf decideExpr
@@ -181,6 +202,7 @@ Finite truth-table checker for a deterministic fragment over leading binders:
 - `Bool`
 - `Fin n` for concrete small `n`
 - small enum inductives with nullary constructors
+- fallback finite binders with `Fintype.card` reducible to a numeral
 
 This enumerates all assignments and compares `decide` outputs.
 The assignment count must stay under `enumCap`.
@@ -239,5 +261,21 @@ def checkFinTruthTable (cand expected : Expr) (enumCap : Nat) : MetaM Unit := do
         let fullProp ← mkForallFVars candFiniteBinders iffProp
         unless (← evalPropAsBool fullProp) do
           throwError "[semantic_fail] truth_table_mismatch"
+        let existsTrue ← mkExistsFVars candFiniteBinders expPropMapped
+        let existsFalse ← mkExistsFVars candFiniteBinders (mkNot expPropMapped)
+        let existsTrueFallback := mkNot (← mkForallFVars candFiniteBinders (mkNot expPropMapped))
+        let existsFalseFallback := mkNot (← mkForallFVars candFiniteBinders expPropMapped)
+        let hasTrue ←
+          try
+            evalPropAsBool existsTrue
+          catch _ =>
+            evalPropAsBool existsTrueFallback
+        let hasFalse ←
+          try
+            evalPropAsBool existsFalse
+          catch _ =>
+            evalPropAsBool existsFalseFallback
+        unless hasTrue && hasFalse do
+          throwError "[semantic_fail] truth_table_reference_constant"
 
 end AutoformalizationEval.Families

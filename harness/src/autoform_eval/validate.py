@@ -25,7 +25,7 @@ FORBIDDEN_DATASET_TOKENS = {
 }
 WS_RE = re.compile(r"\s+")
 LEADING_FORALL_RE = re.compile(r"^\s*(?:\u2200|forall)\s+([^:]+?)\s*:\s*([^,]+?)\s*,\s*(.*)$", re.DOTALL)
-FIN_TYPE_RE = re.compile(r"^Fin\s*\(?\s*(\d+)\s*\)?$")
+TYPE_NAT_APP_RE = re.compile(r"^(Fin|Zmod)\b(.*)$")
 INDUCTIVE_RE = re.compile(r"^inductive\s+([A-Za-z_][A-Za-z0-9_']*)\b")
 BOOL_CONNECTIVES = ("&&", "||")
 SET_TYPE_PREFIX_RE = re.compile(r":\s*Set\b")
@@ -267,16 +267,111 @@ def _parse_context_enum_sizes(context: str) -> dict[str, int]:
     return enum_sizes
 
 
-def _finite_domain_size(ty: str, enum_sizes: dict[str, int]) -> int | None:
-    ty_norm = ty.strip()
-    if ty_norm == "Bool":
-        return 2
-    fin_match = FIN_TYPE_RE.match(ty_norm)
-    if fin_match:
-        return int(fin_match.group(1))
-    if ty_norm in enum_sizes:
-        return enum_sizes[ty_norm]
+def _strip_outer_parentheses(text: str) -> str:
+    out = text.strip()
+    while out.startswith("(") and out.endswith(")"):
+        depth = 0
+        wraps_whole = True
+        for idx, ch in enumerate(out):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth < 0:
+                    wraps_whole = False
+                    break
+                if depth == 0 and idx != len(out) - 1:
+                    wraps_whole = False
+                    break
+        if depth != 0 or not wraps_whole:
+            break
+        out = out[1:-1].strip()
+    return out
+
+
+def _split_top_level_type_op(expr: str, op: str) -> tuple[str, str] | None:
+    depth = 0
+    idx = 0
+    while idx < len(expr):
+        ch = expr[idx]
+        if ch == "(":
+            depth += 1
+            idx += 1
+            continue
+        if ch == ")":
+            if depth > 0:
+                depth -= 1
+            idx += 1
+            continue
+        if depth == 0 and expr.startswith(op, idx):
+            lhs = expr[:idx].strip()
+            rhs = expr[idx + len(op) :].strip()
+            if lhs and rhs:
+                return lhs, rhs
+            return None
+        idx += 1
     return None
+
+
+def _parse_nat_type_arg(ty_norm: str) -> tuple[int | None, str | None]:
+    match = TYPE_NAT_APP_RE.match(ty_norm)
+    if not match:
+        return None, None
+
+    head = match.group(1)
+    raw_arg = match.group(2).strip()
+    if not raw_arg:
+        return None, f"{head}_missing_arg"
+
+    arg = _strip_outer_parentheses(raw_arg)
+    if not arg:
+        return None, f"{head}_empty_arg"
+    if not arg.isdigit():
+        return None, f"{head}_nonliteral_arg:{arg}"
+    return int(arg), None
+
+
+def _finite_domain_size(ty: str, enum_sizes: dict[str, int]) -> tuple[int | None, str | None]:
+    ty_norm = _strip_outer_parentheses(ty.strip())
+    if not ty_norm:
+        return None, "empty_type"
+
+    arrow_split = _split_top_level_type_op(ty_norm, "->")
+    if arrow_split is None:
+        arrow_split = _split_top_level_type_op(ty_norm, "→")
+    if arrow_split is not None:
+        dom_ty, codom_ty = arrow_split
+        dom_size, dom_reason = _finite_domain_size(dom_ty, enum_sizes)
+        if dom_size is None:
+            return None, f"arrow_domain:{dom_reason or dom_ty}"
+        codom_size, codom_reason = _finite_domain_size(codom_ty, enum_sizes)
+        if codom_size is None:
+            return None, f"arrow_codomain:{codom_reason or codom_ty}"
+        return codom_size**dom_size, None
+
+    prod_split = _split_top_level_type_op(ty_norm, "×")
+    if prod_split is not None:
+        lhs_ty, rhs_ty = prod_split
+        lhs_size, lhs_reason = _finite_domain_size(lhs_ty, enum_sizes)
+        if lhs_size is None:
+            return None, f"product_lhs:{lhs_reason or lhs_ty}"
+        rhs_size, rhs_reason = _finite_domain_size(rhs_ty, enum_sizes)
+        if rhs_size is None:
+            return None, f"product_rhs:{rhs_reason or rhs_ty}"
+        return lhs_size * rhs_size, None
+
+    if ty_norm == "Bool":
+        return 2, None
+    if ty_norm in enum_sizes:
+        return enum_sizes[ty_norm], None
+
+    nat_app_size, nat_app_reason = _parse_nat_type_arg(ty_norm)
+    if nat_app_reason is not None:
+        return None, nat_app_reason
+    if nat_app_size is not None:
+        return nat_app_size, None
+
+    return None, f"unsupported_type:{ty_norm}"
 
 
 def _compute_enum_cap_from_item(item: DatasetItem) -> tuple[int | None, str | None]:
@@ -297,7 +392,7 @@ def _compute_enum_cap_from_item(item: DatasetItem) -> tuple[int | None, str | No
         if not var_names:
             return None, "binder_parse"
 
-        domain_size = _finite_domain_size(ty_part, enum_sizes)
+        domain_size, _ = _finite_domain_size(ty_part, enum_sizes)
         if domain_size is None:
             break
 
@@ -327,9 +422,10 @@ def _compute_set_outer_assignment_count(item: DatasetItem) -> tuple[int | None, 
         if not var_names:
             return None, "binder_parse"
 
-        domain_size = _finite_domain_size(ty_part, enum_sizes)
+        domain_size, size_reason = _finite_domain_size(ty_part, enum_sizes)
         if domain_size is None:
-            return None, f"unsupported_outer_binder_type:{ty_part}"
+            reason = size_reason or f"unsupported_type:{ty_part}"
+            return None, f"unsupported_outer_binder_type:{reason}"
 
         for _ in var_names:
             cap *= domain_size
@@ -349,9 +445,10 @@ def _compute_set_carrier_size(item: DatasetItem) -> tuple[int | None, str | None
         return None, "carrier_type_missing"
 
     enum_sizes = _parse_context_enum_sizes(item.context)
-    carrier_size = _finite_domain_size(carrier_ty, enum_sizes)
+    carrier_size, size_reason = _finite_domain_size(carrier_ty, enum_sizes)
     if carrier_size is None:
-        return None, f"unsupported_carrier_type:{carrier_ty}"
+        reason = size_reason or f"unsupported_type:{carrier_ty}"
+        return None, f"unsupported_carrier_type:{reason}"
     return carrier_size, None
 
 

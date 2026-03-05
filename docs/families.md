@@ -14,8 +14,11 @@
   v1 (`ring_identity_norm_v1`) uses strict binder-position matching.
   v2 (`ring_identity_norm_v2`) is invariant to leading binder permutations.
 - `fin_truth_table` currently enumerates leading finite binders in a deterministic fragment:
-  `Bool`, concrete `Fin n`, and small nullary enum inductives.
+  `Bool`, concrete `Fin n`, small nullary enum inductives, and finite binders with
+  `Fintype.card` reducible to a numeral.
   Parenthesize Bool connectives inside equality, e.g. `(a && b) = false` (not `a && b = false`).
+  The semantic non-constant reference guard (`truth_table_reference_constant`) is enforced in both
+  explicit enumeration and `Fintype` fallback paths.
 - Fragment keys are enforced in Test2:
   - `ring_identity_norm_v1`
   - `ring_identity_norm_v2`

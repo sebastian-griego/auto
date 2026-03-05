@@ -3,7 +3,7 @@ from __future__ import annotations
 from .types import DatasetItem
 
 
-SUPPORTED_PROMPT_VERSIONS = ("v1.0.0", "v1.1.0")
+SUPPORTED_PROMPT_VERSIONS = ("v1.0.0", "v1.1.0", "v1.2.0")
 BENCHMARK_PROMPT_VERSION = "v1.1.0"
 
 _FRAGMENT_BY_CHECK_KEY_BY_PROMPT = {
@@ -13,6 +13,11 @@ _FRAGMENT_BY_CHECK_KEY_BY_PROMPT = {
         "set_equality_norm": "set_equality_norm_v0",
     },
     "v1.1.0": {
+        "ring_identity_norm": "ring_identity_norm_v2",
+        "fin_truth_table": "fin_truth_table_v1",
+        "set_equality_norm": "set_equality_norm_v1",
+    },
+    "v1.2.0": {
         "ring_identity_norm": "ring_identity_norm_v2",
         "fin_truth_table": "fin_truth_table_v1",
         "set_equality_norm": "set_equality_norm_v1",
@@ -51,7 +56,8 @@ def _family_rules(item: DatasetItem, fragment_key: str) -> str:
     if item.family == "fin_truth_table":
         return (
             f"Fragment {fragment_key}: use propositions over finite leading binders "
-            "(Bool, concrete Fin n, or small nullary enums from context) with logical connectives/equalities. "
+            "(Bool, concrete Fin n, small nullary enums from context, or any type with a `Fintype` "
+            "instance whose `Fintype.card` reduces to a numeral in Lean) with logical connectives/equalities. "
             "When using Bool connectives (`&&` or `||`) inside equality, parenthesize them: write "
             "`(a && b) = false` or `(a || b) = false`, not `a && b = false` or `a || b = false`."
         )

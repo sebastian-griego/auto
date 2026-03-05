@@ -35,8 +35,9 @@
 - For `set_equality`, include a `set_enum_cap:<N>` tag and keep `N <= 4096`.
 - For `set_equality`, expected terms should be direct equality (`A = B`) with set-typed sides, not extensional rewrites like `∀ x, x ∈ A ↔ x ∈ B`.
 - Optional: set `fragment:<key>` in tags to override the default fragment key derived from `semantic.check`.
-- For `fin_truth_table`, the deterministic checker supports leading binders over `Bool`, concrete `Fin n`, and small nullary enum inductives declared in `context`.
+- For `fin_truth_table`, the deterministic checker supports leading binders over `Bool`, concrete `Fin n`, small nullary enum inductives declared in `context`, and any type with a `Fintype` instance whose `Fintype.card` reduces to a numeral in Lean.
 - For `fin_truth_table`, set `enum_cap` to the assignment product of leading finite binders. Validator recomputes this and enforces consistency.
+- For `fin_truth_table`, semantic non-constant reference guarding (`truth_table_reference_constant`) is enforced in both explicit assignment enumeration and the `Fintype` fallback path.
 - For enum binders, keep constructors nullary and small enough that full assignment product remains under the cap.
 - For `set_equality`, choose `set_enum_cap` so it is at least `max(outer_assignment_count, carrier_size)`.
 

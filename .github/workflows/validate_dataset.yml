@@ -36,6 +36,9 @@ jobs:
       - name: Install harness
         run: python -m pip install -e harness
 
+      - name: Run harness smoke tests
+        run: python -m autoform_eval.smoke_tests
+
       - name: Validate pilot split
         run: |
           cd harness
