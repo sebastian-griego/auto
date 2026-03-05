@@ -16,9 +16,13 @@
 - `fin_truth_table` currently enumerates leading finite binders in a deterministic fragment:
   `Bool`, concrete `Fin n`, small nullary enum inductives, and finite binders with
   `Fintype.card` reducible to a numeral.
+  Canonical check key is `fin_truth_table`; `fin_truth_table_norm` is accepted as an alias.
   Parenthesize Bool connectives inside equality, e.g. `(a && b) = false` (not `a && b = false`).
   The semantic non-constant reference guard (`truth_table_reference_constant`) is enforced in both
   explicit enumeration and `Fintype` fallback paths.
+- Allowed provenance source kinds: `mathlib_decl`, `textbook`, `competition`,
+  `assistant_generated`, `other`.
+- `context` may include local `def` declarations when needed (for helper functions/constants).
 - Fragment keys are enforced in Test2:
   - `ring_identity_norm_v1`
   - `ring_identity_norm_v2`

@@ -10,7 +10,10 @@ from .types import DatasetItem, ProvenanceSpec, SemanticSpec
 ALLOWED_TIER = {"A", "B"}
 ALLOWED_SPLIT = {"pilot", "dev", "test"}
 ALLOWED_KIND = {"normalized_ref", "decidable_ref", "behavioral"}
-ALLOWED_SOURCE_KIND = {"mathlib_decl", "textbook", "competition", "other"}
+ALLOWED_SOURCE_KIND = {"mathlib_decl", "textbook", "competition", "assistant_generated", "other"}
+CHECK_KEY_ALIASES = {
+    "fin_truth_table_norm": "fin_truth_table",
+}
 
 
 class DatasetError(ValueError):
@@ -42,6 +45,8 @@ def parse_item(raw: dict[str, Any], where: str) -> DatasetItem:
     split = _expect_str(raw, "split", where)
     tier = _expect_str(raw, "tier", where)
     kind = _expect_str(semantic_raw, "kind", f"{where}.semantic")
+    check = _expect_str(semantic_raw, "check", f"{where}.semantic")
+    check = CHECK_KEY_ALIASES.get(check, check)
     source_kind = _expect_str(provenance_raw, "source_kind", f"{where}.provenance")
 
     if split not in ALLOWED_SPLIT:
@@ -55,7 +60,7 @@ def parse_item(raw: dict[str, Any], where: str) -> DatasetItem:
 
     semantic = SemanticSpec(
         kind=kind,
-        check=_expect_str(semantic_raw, "check", f"{where}.semantic"),
+        check=check,
         extra=semantic_raw.get("extra") if isinstance(semantic_raw.get("extra"), str) else None,
     )
     provenance = ProvenanceSpec(

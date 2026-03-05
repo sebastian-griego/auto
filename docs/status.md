@@ -106,6 +106,9 @@
 - [x] Prompt version `v1.2.0` added (default unchanged at `v1.1.0`) with `fin_truth_table` rules updated for `Fintype.card`-literal finite binders
 - [x] Validator finite-size recomputation now supports recursive finite types (`Bool`, `Fin n`, context enums, `Zmod n`, `×`, `→`/`->`, parentheses) for `enum_cap`/`set_enum_cap` checks
 - [x] Added harness smoke module (`python -m autoform_eval.smoke_tests`) and wired it into `validate_dataset` CI
+- [x] Dataset parsing now accepts `assistant_generated` provenance and canonicalizes `fin_truth_table_norm` -> `fin_truth_table`
+- [x] Validator now allows `def` in `context` only and enforces family/check-key consistency (`check_key_mismatch:*`)
+- [x] Lean checker dispatch now accepts `fin_truth_table_norm` alias while enforcing `fin_truth_table_v1` fragment
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

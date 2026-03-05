@@ -40,7 +40,10 @@ def _dataset_forbidden_issues(item: DatasetItem) -> list[str]:
         ("expected", item.expected),
         ("semantic.extra", item.semantic.extra or ""),
     ):
-        bad = has_forbidden_tokens(text, forbidden_ok=allow | {"by"}, strict_reject_assign=False)
+        field_allow = allow | {"by"}
+        if field_name == "context":
+            field_allow |= {"def"}
+        bad = has_forbidden_tokens(text, forbidden_ok=field_allow, strict_reject_assign=False)
         if bad and bad in FORBIDDEN_DATASET_TOKENS:
             issues.append(f"forbidden_token:{field_name}:{bad}")
     return issues
@@ -63,6 +66,15 @@ def _extract_int_tag(tags: list[str], prefix: str) -> int | None:
 
 def _dataset_family_issues(item: DatasetItem) -> list[str]:
     issues: list[str] = []
+    required_check_by_family = {
+        "ring_identity": "ring_identity_norm",
+        "fin_truth_table": "fin_truth_table",
+        "set_equality": "set_equality_norm",
+    }
+    required_check = required_check_by_family.get(item.family)
+    if required_check is not None and item.semantic.check != required_check:
+        issues.append(f"check_key_mismatch:{item.family}:{item.semantic.check}")
+
     if item.family == "fin_truth_table":
         enum_cap = _extract_enum_cap(item.tags)
         if enum_cap is None:

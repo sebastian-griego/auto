@@ -86,6 +86,9 @@ def checkFamily (checkKey : String) (fragmentKey : String) (enumCap : Nat) (cand
   | "fin_truth_table" =>
       requireFragmentKey checkKey fragmentKey "fin_truth_table_v1"
       Families.checkFinTruthTable cand expected enumCap
+  | "fin_truth_table_norm" =>
+      requireFragmentKey checkKey fragmentKey "fin_truth_table_v1"
+      Families.checkFinTruthTable cand expected enumCap
   | "set_equality_norm" =>
       match fragmentKey with
       | "set_equality_norm_v0" =>

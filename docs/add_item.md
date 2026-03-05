@@ -28,10 +28,13 @@
 
 ## Rules
 - Keep `context` minimal.
+- `context` may include local `def` declarations when helper definitions are needed.
 - `expected` must be a Lean `Prop` term.
 - Choose `semantic.kind` and `semantic.check` consistent with the family.
 - Fill provenance fields for every row.
+- Allowed `provenance.source_kind`: `mathlib_decl`, `textbook`, `competition`, `assistant_generated`, `other`.
 - For `fin_truth_table`, include an `enum_cap:<N>` tag and keep `N <= 256`.
+- For `fin_truth_table`, use canonical `semantic.check = fin_truth_table` (`fin_truth_table_norm` is accepted as an alias).
 - For `set_equality`, include a `set_enum_cap:<N>` tag and keep `N <= 4096`.
 - For `set_equality`, expected terms should be direct equality (`A = B`) with set-typed sides, not extensional rewrites like `∀ x, x ∈ A ↔ x ∈ B`.
 - Optional: set `fragment:<key>` in tags to override the default fragment key derived from `semantic.check`.
