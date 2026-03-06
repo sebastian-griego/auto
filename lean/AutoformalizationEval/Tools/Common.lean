@@ -45,6 +45,9 @@ def replaceRootPrefix (name oldRoot newRoot : Name) : Name :=
     let rel := (nameParts name).drop (nameParts oldRoot).length
     appendNameParts newRoot rel
 
+def isInternalOrAuxName (name : Name) : Bool :=
+  name.isInternalDetail || name.isImplementationDetail
+
 private partial def collectConstNamesAux (e : Expr) (acc : Std.HashSet Name) : Std.HashSet Name :=
   match e with
   | .const name _ => acc.insert name

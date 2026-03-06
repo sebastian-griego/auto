@@ -50,6 +50,13 @@ cd harness
 python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 ```
 
+Run local Lean inspection utilities (`check`, `verify-proof`, `extract-theorems`, `inspect-prop`):
+```bash
+cd harness
+python -m autoform_eval.cli tools inspect-prop --prop /tmp/prop.lean --import Init --no-cache
+```
+Use `--preamble` and `--no-cache` for local tool workflows as needed (details: `docs/local_tools.md`).
+
 ## Pinned environment
 - Lean toolchain: see `lean/lean-toolchain`
 - mathlib revision: see `lean/lakefile.lean`

@@ -12,7 +12,7 @@ from typing import Any
 from .adapters import GeminiAdapter, OpenAIAdapter
 from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
-from .lean_tools import check_content, extract_theorems, verify_proof
+from .lean_tools import check_content, extract_theorems, inspect_prop, verify_proof
 from .lean_runner import classify_failure, run_lean_file
 from .parse import parse_candidate
 from .paths import default_cache_root, default_dataset_dir, default_lean_dir, default_results_root
@@ -630,6 +630,12 @@ def _read_file(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def _read_optional_file(path: str | None) -> str:
+    if not path:
+        return ""
+    return _read_file(path)
+
+
 def _parse_permitted_sorries(raw: str) -> list[str]:
     if not raw.strip():
         return []
@@ -647,7 +653,12 @@ def cmd_tools_check(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"failed reading --content: {exc}", file=sys.stderr)
         return 2
-    result = check_content(content, imports=args.imports, timeout_seconds=args.timeout)
+    result = check_content(
+        content,
+        imports=args.imports,
+        timeout_seconds=args.timeout,
+        use_cache=not args.no_cache,
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if bool(result.get("okay")) else 1
 
@@ -656,6 +667,7 @@ def cmd_tools_verify_proof(args: argparse.Namespace) -> int:
     try:
         formal_statement = _read_file(args.formal)
         content = _read_file(args.content)
+        preamble = _read_optional_file(args.preamble)
     except OSError as exc:
         print(f"failed reading verify-proof inputs: {exc}", file=sys.stderr)
         return 2
@@ -664,7 +676,9 @@ def cmd_tools_verify_proof(args: argparse.Namespace) -> int:
         content=content,
         imports=args.imports,
         permitted_sorries=_parse_permitted_sorries(args.permitted_sorries),
+        preamble=preamble,
         timeout_seconds=args.timeout,
+        use_cache=not args.no_cache,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if bool(result.get("okay")) else 1
@@ -673,10 +687,35 @@ def cmd_tools_verify_proof(args: argparse.Namespace) -> int:
 def cmd_tools_extract_theorems(args: argparse.Namespace) -> int:
     try:
         content = _read_file(args.content)
+        preamble = _read_optional_file(args.preamble)
     except OSError as exc:
         print(f"failed reading --content: {exc}", file=sys.stderr)
         return 2
-    result = extract_theorems(content=content, imports=args.imports, timeout_seconds=args.timeout)
+    result = extract_theorems(
+        content=content,
+        imports=args.imports,
+        preamble=preamble,
+        timeout_seconds=args.timeout,
+        use_cache=not args.no_cache,
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if bool(result.get("okay")) else 1
+
+
+def cmd_tools_inspect_prop(args: argparse.Namespace) -> int:
+    try:
+        prop = _read_file(args.prop)
+        preamble = _read_optional_file(args.preamble)
+    except OSError as exc:
+        print(f"failed reading inspect-prop inputs: {exc}", file=sys.stderr)
+        return 2
+    result = inspect_prop(
+        prop=prop,
+        imports=args.imports,
+        preamble=preamble,
+        timeout_seconds=args.timeout,
+        use_cache=not args.no_cache,
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if bool(result.get("okay")) else 1
 
@@ -740,6 +779,7 @@ def build_parser() -> argparse.ArgumentParser:
     tools_check.add_argument("--content", required=True, help="Path to file containing full Lean content")
     tools_check.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
     tools_check.add_argument("--timeout", type=float, default=30.0)
+    tools_check.add_argument("--no-cache", action="store_true")
     tools_check.set_defaults(func=cmd_tools_check)
 
     tools_verify = tools_sub.add_parser(
@@ -762,11 +802,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tools_verify.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
     tools_verify.add_argument(
+        "--preamble",
+        default="",
+        help="Path to Lean preamble inserted after imports and before namespaces",
+    )
+    tools_verify.add_argument(
         "--permitted-sorries",
         default="",
         help="Comma-separated candidate-relative suffixes (example: helper,Sub.helper)",
     )
     tools_verify.add_argument("--timeout", type=float, default=30.0)
+    tools_verify.add_argument("--no-cache", action="store_true")
     tools_verify.set_defaults(func=cmd_tools_verify_proof)
 
     tools_extract = tools_sub.add_parser(
@@ -783,8 +829,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to declaration snippet (wrapped in namespace ExtractTmp)",
     )
     tools_extract.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_extract.add_argument(
+        "--preamble",
+        default="",
+        help="Path to Lean preamble inserted after imports and before namespace ExtractTmp",
+    )
     tools_extract.add_argument("--timeout", type=float, default=30.0)
+    tools_extract.add_argument("--no-cache", action="store_true")
     tools_extract.set_defaults(func=cmd_tools_extract_theorems)
+
+    tools_inspect = tools_sub.add_parser(
+        "inspect-prop",
+        help="Inspect a Prop term and extract structural metadata",
+        description=(
+            "Input is a Prop term snippet. "
+            "--prop is wrapped as `def target : Prop := ...` inside namespace InspectTmp."
+        ),
+    )
+    tools_inspect.add_argument("--prop", required=True, help="Path to file containing a Prop term snippet")
+    tools_inspect.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_inspect.add_argument(
+        "--preamble",
+        default="",
+        help="Path to Lean preamble inserted after imports and before namespace InspectTmp",
+    )
+    tools_inspect.add_argument("--timeout", type=float, default=30.0)
+    tools_inspect.add_argument("--no-cache", action="store_true")
+    tools_inspect.set_defaults(func=cmd_tools_inspect_prop)
 
     return parser
 

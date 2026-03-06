@@ -21,7 +21,9 @@ private def splitDependencies (root : Name) (deps : Array Name) : Array String √
   let mut localDeps : Array String := #[]
   let mut externalDeps : Array String := #[]
   for dep in deps do
-    if nameHasRootPrefix dep root then
+    if isInternalOrAuxName dep then
+      pure ()
+    else if nameHasRootPrefix dep root then
       let localName := relativeToRootString dep root
       if !localName.isEmpty then
         localDeps := localDeps.push localName
@@ -33,7 +35,7 @@ private def theoremPayload : MetaM Json := do
   let env ‚Üê getEnv
   let mut theorems : Array TheoremMeta := #[]
   for (name, info) in env.constants.toList do
-    if nameHasRootPrefix name extractRoot then
+    if nameHasRootPrefix name extractRoot && !isInternalOrAuxName name then
       let suffix := relativeToRootString name extractRoot
       if !suffix.isEmpty then
         match info with

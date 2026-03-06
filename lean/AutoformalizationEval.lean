@@ -3,6 +3,7 @@ import AutoformalizationEval.Checks
 import AutoformalizationEval.Tools.Common
 import AutoformalizationEval.Tools.VerifyProof
 import AutoformalizationEval.Tools.ExtractTheorems
+import AutoformalizationEval.Tools.InspectProp
 import AutoformalizationEval.Families.RingIdentity
 import AutoformalizationEval.Families.FinTruthTable
 import AutoformalizationEval.Families.SetEquality

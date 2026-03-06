@@ -1,65 +1,74 @@
 # Local Lean Tools
 
-This repository includes local-only Lean tooling accessible through Python and CLI wrappers.
+This repository includes local-only Lean tooling accessible through Python wrappers and `autoform_eval.cli tools`.
 
 ## Tools
 
 ### `check`
-- Compiles full Lean content and reports structured status.
-- Input is a full Lean module snippet (commands/decls are allowed).
+- Compiles full Lean content and returns structured status.
+- Input is full Lean content (module-level commands/decls allowed).
 
 ### `verify-proof`
-- Verifies candidate declarations against a formal spec snippet.
-- `Spec.<suffix>` declarations must be implemented by matching `Cand.<suffix>` declarations.
-- Compares declaration kind + type (and value for `def`/`opaque` when applicable).
-- Scans all candidate declarations for `sorryAx` usage.
-
-### `extract-theorems`
-- Extracts theorem metadata from a declaration snippet.
-- Returns theorem name, type, `is_sorry`, and local/external dependency lists for theorem type/proof expressions.
-
-## Snippet Contracts
-
-### `verify-proof`
-- `--formal` and `--content` are declaration snippets, not full modules.
-- Wrapping performed by the tool:
+- Verifies candidate declaration snippets against formal spec declaration snippets.
+- Wrapped under:
   - `namespace Spec ... end Spec`
   - `namespace Cand ... end Cand`
+- Checks declaration presence, kind compatibility, type defeq, and selected value defeq (`def`/`opaque` when applicable).
+- Scans candidate declarations for `sorryAx` and supports `permitted_sorries` suffix allowlists.
+- Result payload includes declaration inventories: `spec_declarations` and `candidate_declarations`.
 
 ### `extract-theorems`
-- `--content` is a declaration snippet, not a full module.
-- Wrapping performed by the tool:
-  - `namespace ExtractTmp ... end ExtractTmp`
+- Extracts theorem metadata from declaration snippets wrapped under `namespace ExtractTmp`.
+- Returns theorem name/type, `is_sorry`, and local/external dependencies.
 
-### `check`
-- Accepts full Lean content directly.
-- Optional `--import` modules are prepended before the content.
+### `inspect-prop`
+- Inspects a single Prop snippet wrapped as:
+  - `namespace InspectTmp`
+  - `def target : Prop := <prop>`
+  - `end InspectTmp`
+- Returns pretty-printed expression/type/whnf, leading-forall metadata, `contains_sorry`, and local/external dependencies.
 
-## Imports
+## Imports and Preamble
 
-- All tools accept repeated `--import MODULE`.
-- `verify-proof` and `extract-theorems` default to `Mathlib` when no import is provided.
+- All tools accept repeated `--import MODULE` (Python: `imports=[...]`).
+- `verify-proof`, `extract-theorems`, and `inspect-prop` default to `Mathlib` when imports are omitted.
+- `verify-proof`, `extract-theorems`, and `inspect-prop` accept optional preambles (`--preamble PATH` / `preamble=...`).
+- Preamble is inserted after imports and before wrapper namespaces, and is **not** wrapped inside `Spec`/`Cand`/`ExtractTmp`/`InspectTmp`.
 
-## Permitted Sorries
+## Cache Behavior
 
-`verify-proof` supports `--permitted-sorries` with candidate-relative suffixes:
-- Example: `helper,Sub.helper`
-- These are interpreted under `Cand` and allow `sorryAx` only for those candidate declarations.
+Cache directories (under `harness_cache/`):
+- `lean_tools_sources/`: generated `.lean` source files
+- `lean_tools_results/`: cached JSON result entries
 
-## Cache Layout
+Stable cache keys include:
+- tool name
+- imports
+- payload/snippets (including preamble where applicable)
+- pinned Lean files (`lean/lean-toolchain`, `lean/lakefile.lean`)
+- tool source fingerprints (`lean_tools.py`, `Tools/Common.lean`, `Tools/VerifyProof.lean`, `Tools/ExtractTheorems.lean`, `Tools/InspectProp.lean`)
+- local `TOOLS_SCHEMA_VERSION`
 
-Under `harness_cache/`:
-- `lean_tools_sources/`: generated `.lean` tool files keyed by stable content hash
-- `lean_tools_results/`: cached JSON results keyed by stable content hash
+`timeout_seconds` is intentionally excluded from the cache key.
 
-Stable keys include tool name, imports, snippets, permitted sorries, and pinned Lean config file contents (`lean/lean-toolchain`, `lean/lakefile.lean`).
+Every tool result includes:
+- `cache_key`: stable hash key used for cache/source naming
+- `source_path`: generated Lean source path
+- `cached`: whether result was returned from result cache
 
-## Example Commands
+Use `--no-cache` (or `use_cache=False`) to bypass result cache reads/writes while still writing source files.
+
+## Internal Name Filtering
+
+User-facing declaration/dependency outputs filter internal compiler-generated names (aux/internal details) using Lean name predicates, so helper internals (for example match/proof aux names) are omitted from tool outputs.
+
+## CLI Examples
 
 ```bash
 python -m autoform_eval.cli tools check \
   --content /tmp/check_input.lean \
-  --import Init
+  --import Init \
+  --no-cache
 ```
 
 ```bash
@@ -67,21 +76,36 @@ python -m autoform_eval.cli tools verify-proof \
   --formal /tmp/formal_snippet.lean \
   --content /tmp/candidate_snippet.lean \
   --import Mathlib \
+  --preamble /tmp/preamble.lean \
   --permitted-sorries helper,Sub.helper
 ```
 
 ```bash
 python -m autoform_eval.cli tools extract-theorems \
   --content /tmp/declarations.lean \
-  --import Mathlib
+  --import Mathlib \
+  --preamble /tmp/preamble.lean
+```
+
+```bash
+python -m autoform_eval.cli tools inspect-prop \
+  --prop /tmp/prop_snippet.lean \
+  --import Mathlib \
+  --preamble /tmp/preamble.lean
 ```
 
 ## Python API
 
 ```python
-from autoform_eval.lean_tools import check_content, verify_proof, extract_theorems
+from autoform_eval.lean_tools import (
+    check_content,
+    verify_proof,
+    extract_theorems,
+    inspect_prop,
+)
 
-check_content(content, imports=["Init"])
-verify_proof(formal_statement, content, imports=["Mathlib"], permitted_sorries=["helper"])
-extract_theorems(content, imports=["Mathlib"])
+check_content(content, imports=["Init"], use_cache=False)
+verify_proof(formal_statement, content, imports=["Mathlib"], preamble=preamble, use_cache=True)
+extract_theorems(content, imports=["Mathlib"], preamble=preamble)
+inspect_prop(prop, imports=["Mathlib"], preamble=preamble)
 ```

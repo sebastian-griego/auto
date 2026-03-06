@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from .lean_tools import check_content, extract_theorems, verify_proof
+from .lean_tools import check_content, extract_theorems, inspect_prop, verify_proof
 from .lean_runner import classify_failure, run_lean_file
 from .paths import default_lean_dir
 
@@ -162,6 +162,18 @@ def _run_tools_smoke() -> None:
     if not bool(verify_ok.get("okay")):
         raise AssertionError(f"verify_proof expected success, got {verify_ok}")
 
+    verify_no_cache = verify_proof(
+        formal_statement=formal_add_comm,
+        content=cand_add_comm,
+        imports=["Init"],
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if "source_path" not in verify_no_cache or "cache_key" not in verify_no_cache:
+        raise AssertionError(f"verify_proof no-cache result missing cache metadata: {verify_no_cache}")
+    if verify_no_cache.get("cached") is not False:
+        raise AssertionError(f"verify_proof no-cache result must report cached=False: {verify_no_cache}")
+
     cand_wrong = "\n".join(
         [
             "theorem add_comm (a b : Nat) : a + b = a + b := by",
@@ -221,6 +233,30 @@ def _run_tools_smoke() -> None:
     if not any(str(err).startswith("extra_candidate_axiom:") for err in axiom_errors):
         raise AssertionError(f"verify_proof extra-axiom case missing extra_candidate_axiom error: {verify_axiom}")
 
+    preamble_twice = "def twice (n : Nat) : Nat := n + n"
+    formal_twice = "\n".join(
+        [
+            "theorem twice_id (n : Nat) : twice n = n + n := by",
+            "  sorry",
+        ]
+    )
+    cand_twice = "\n".join(
+        [
+            "theorem twice_id (n : Nat) : twice n = n + n := by",
+            "  rfl",
+        ]
+    )
+    verify_with_preamble = verify_proof(
+        formal_statement=formal_twice,
+        content=cand_twice,
+        imports=["Init"],
+        preamble=preamble_twice,
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if not bool(verify_with_preamble.get("okay")):
+        raise AssertionError(f"verify_proof preamble case expected success, got {verify_with_preamble}")
+
     extract_content = "\n".join(
         [
             "def helper (n : Nat) : Nat := n + 1",
@@ -258,6 +294,94 @@ def _run_tools_smoke() -> None:
             raise AssertionError(f"extract_theorems theorem type must be nonempty: {extract_res}")
         if not required_dep_fields.issubset(row.keys()):
             raise AssertionError(f"extract_theorems theorem row missing dependency fields: {extract_res}")
+
+    preamble_extract = "def ext_helper (n : Nat) : Nat := n + 2"
+    extract_with_preamble = extract_theorems(
+        content="\n".join(
+            [
+                "theorem t3 (n : Nat) : ext_helper n = n + 2 := by",
+                "  rfl",
+            ]
+        ),
+        imports=["Init"],
+        preamble=preamble_extract,
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if not bool(extract_with_preamble.get("okay")):
+        raise AssertionError(f"extract_theorems preamble case expected success, got {extract_with_preamble}")
+    preamble_rows = extract_with_preamble.get("theorems", [])
+    if not preamble_rows or not isinstance(preamble_rows[0], dict):
+        raise AssertionError(f"extract_theorems preamble case returned invalid theorem rows: {extract_with_preamble}")
+    if not required_dep_fields.issubset(preamble_rows[0].keys()):
+        raise AssertionError(f"extract_theorems preamble case missing dependency fields: {extract_with_preamble}")
+
+    inspect_simple = inspect_prop(
+        prop="∀ n : Nat, n = n",
+        imports=["Init"],
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if not bool(inspect_simple.get("okay")):
+        raise AssertionError(f"inspect_prop simple case expected success, got {inspect_simple}")
+    if int(inspect_simple.get("leading_forall_count", -1)) != 1:
+        raise AssertionError(f"inspect_prop simple case expected one leading forall, got {inspect_simple}")
+    leading_foralls = inspect_simple.get("leading_foralls", [])
+    if not isinstance(leading_foralls, list) or len(leading_foralls) != 1:
+        raise AssertionError(f"inspect_prop simple case expected one leading forall entry, got {inspect_simple}")
+    if not str(inspect_simple.get("type_pretty", "")).strip():
+        raise AssertionError(f"inspect_prop simple case expected nonempty type_pretty, got {inspect_simple}")
+    if "local_dependencies" not in inspect_simple or "external_dependencies" not in inspect_simple:
+        raise AssertionError(f"inspect_prop simple case missing dependency fields: {inspect_simple}")
+
+    inspect_with_preamble = inspect_prop(
+        prop="∀ n : Nat, Good n",
+        imports=["Init"],
+        preamble="\n".join(
+            [
+                "namespace InspectTmp",
+                "def Good (n : Nat) : Prop := n = n",
+                "end InspectTmp",
+            ]
+        ),
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if not bool(inspect_with_preamble.get("okay")):
+        raise AssertionError(f"inspect_prop preamble case expected success, got {inspect_with_preamble}")
+    local_deps = inspect_with_preamble.get("local_dependencies", [])
+    if "Good" not in local_deps:
+        raise AssertionError(f"inspect_prop preamble case expected local dependency Good, got {inspect_with_preamble}")
+
+    verify_internal_filter = verify_proof(
+        formal_statement="\n".join(
+            [
+                "def pred0 (n : Nat) : Nat :=",
+                "  match n with",
+                "  | 0 => 0",
+                "  | m + 1 => m",
+            ]
+        ),
+        content="\n".join(
+            [
+                "def pred0 (n : Nat) : Nat :=",
+                "  match n with",
+                "  | 0 => 0",
+                "  | m + 1 => m",
+            ]
+        ),
+        imports=["Init"],
+        timeout_seconds=30.0,
+        use_cache=False,
+    )
+    if not bool(verify_internal_filter.get("okay")):
+        raise AssertionError(f"verify_proof internal-filter case expected success, got {verify_internal_filter}")
+    for field in ("spec_declarations", "candidate_declarations", "extra_candidate_declarations"):
+        names = verify_internal_filter.get(field, [])
+        if not isinstance(names, list):
+            raise AssertionError(f"verify_proof internal-filter field {field} is not a list: {verify_internal_filter}")
+        if any(("match_" in str(name) or "proof_" in str(name) or "_private" in str(name)) for name in names):
+            raise AssertionError(f"verify_proof internal-filter case leaked internal names in {field}: {verify_internal_filter}")
 
 
 def main() -> None:

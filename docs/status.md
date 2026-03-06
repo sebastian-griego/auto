@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-03-05
+- Date: 2026-03-06
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -110,6 +110,7 @@
 - [x] Validator now allows `def` in `context` only and enforces family/check-key consistency (`check_key_mismatch:*`)
 - [x] Lean checker dispatch now accepts `fin_truth_table_norm` alias while enforcing `fin_truth_table_v1` fragment
 - [x] Added local Lean tools layer (`check`, `verify-proof`, `extract-theorems`) with shared path helpers, cache-backed Python API, CLI integration, and smoke coverage
+- [x] Local Lean tools upgraded with source-aware cache invalidation metadata, shared preamble support, new `inspect-prop` command, internal-name filtering, and expanded smoke coverage
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

@@ -18,7 +18,7 @@ private def declEntriesUnderRoot (env : Environment) (root : Name) : Array DeclE
     env.constants.toList.foldl (init := #[]) fun acc (pair : Name × ConstantInfo) =>
       let name := pair.1
       let info := pair.2
-      if !nameHasRootPrefix name root then
+      if !nameHasRootPrefix name root || isInternalOrAuxName name then
         acc
       else
         let suffix := relativeToRootString name root
@@ -50,6 +50,8 @@ private def verifyProofPayload (permittedSorries : Array String) : MetaM Json :=
   let env ← getEnv
   let specDecls := declEntriesUnderRoot env specRoot
   let candDecls := declEntriesUnderRoot env candRoot
+  let specDeclNamesOut := sortUniqueStrings <| specDecls.map (fun decl => decl.suffix)
+  let candDeclNamesOut := sortUniqueStrings <| candDecls.map (fun decl => decl.suffix)
   let specSuffixSet :=
     specDecls.foldl (init := ({} : Std.HashSet String)) fun acc decl => acc.insert decl.suffix
   let permittedSet :=
@@ -122,6 +124,8 @@ private def verifyProofPayload (permittedSorries : Array String) : MetaM Json :=
   let okay := errorsOut.isEmpty
   return Json.mkObj
     [ ("okay", toJson okay)
+    , ("spec_declarations", toJson specDeclNamesOut)
+    , ("candidate_declarations", toJson candDeclNamesOut)
     , ("errors", toJson errorsOut)
     , ("warnings", toJson warningsOut)
     , ("failed_declarations", toJson failedDeclsOut)
