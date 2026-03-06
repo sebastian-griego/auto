@@ -65,6 +65,7 @@ python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 - v1 freeze note: `docs/v1_freeze.md`
 - v1 baseline results: `docs/v1_results.md`
 - v1.1 expansion plan: `docs/v1_1_plan.md`
+- Local Lean tools: `docs/local_tools.md`
 - Protocol: `docs/protocol.md`
 - Threat model: `docs/threat_model.md`
 - Add item guide: `docs/add_item.md`

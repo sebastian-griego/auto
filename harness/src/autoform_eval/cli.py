@@ -12,8 +12,10 @@ from typing import Any
 from .adapters import GeminiAdapter, OpenAIAdapter
 from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
+from .lean_tools import check_content, extract_theorems, verify_proof
 from .lean_runner import classify_failure, run_lean_file
 from .parse import parse_candidate
+from .paths import default_cache_root, default_dataset_dir, default_lean_dir, default_results_root
 from .prompt import (
     BENCHMARK_PROMPT_VERSION,
     SUPPORTED_PROMPT_VERSIONS,
@@ -51,26 +53,6 @@ _TRANSIENT_PROVIDER_ERROR_HINTS = (
     "too many requests",
     "try again",
 )
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _default_dataset_dir() -> Path:
-    return _repo_root() / "dataset"
-
-
-def _default_lean_dir() -> Path:
-    return _repo_root() / "lean"
-
-
-def _default_results_root() -> Path:
-    return _repo_root() / "results" / "runs"
-
-
-def _default_cache_root() -> Path:
-    return _repo_root() / "harness_cache"
 
 
 def _read_mathlib_rev(lean_dir: Path) -> str:
@@ -644,16 +626,71 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_file(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _parse_permitted_sorries(raw: str) -> list[str]:
+    if not raw.strip():
+        return []
+    out: list[str] = []
+    for token in raw.split(","):
+        value = token.strip()
+        if value:
+            out.append(value)
+    return out
+
+
+def cmd_tools_check(args: argparse.Namespace) -> int:
+    try:
+        content = _read_file(args.content)
+    except OSError as exc:
+        print(f"failed reading --content: {exc}", file=sys.stderr)
+        return 2
+    result = check_content(content, imports=args.imports, timeout_seconds=args.timeout)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if bool(result.get("okay")) else 1
+
+
+def cmd_tools_verify_proof(args: argparse.Namespace) -> int:
+    try:
+        formal_statement = _read_file(args.formal)
+        content = _read_file(args.content)
+    except OSError as exc:
+        print(f"failed reading verify-proof inputs: {exc}", file=sys.stderr)
+        return 2
+    result = verify_proof(
+        formal_statement=formal_statement,
+        content=content,
+        imports=args.imports,
+        permitted_sorries=_parse_permitted_sorries(args.permitted_sorries),
+        timeout_seconds=args.timeout,
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if bool(result.get("okay")) else 1
+
+
+def cmd_tools_extract_theorems(args: argparse.Namespace) -> int:
+    try:
+        content = _read_file(args.content)
+    except OSError as exc:
+        print(f"failed reading --content: {exc}", file=sys.stderr)
+        return 2
+    result = extract_theorems(content=content, imports=args.imports, timeout_seconds=args.timeout)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if bool(result.get("okay")) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="autoform-eval")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     validate = sub.add_parser("validate")
     validate.add_argument("--split", default="pilot")
-    validate.add_argument("--dataset-dir", default=str(_default_dataset_dir()))
-    validate.add_argument("--lean-dir", default=str(_default_lean_dir()))
-    validate.add_argument("--out-report", default=str(_default_dataset_dir() / "validation_report.json"))
-    validate.add_argument("--rendered-dir", default=str(_default_results_root() / "validate_rendered"))
+    validate.add_argument("--dataset-dir", default=str(default_dataset_dir()))
+    validate.add_argument("--lean-dir", default=str(default_lean_dir()))
+    validate.add_argument("--out-report", default=str(default_dataset_dir() / "validation_report.json"))
+    validate.add_argument("--rendered-dir", default=str(default_results_root() / "validate_rendered"))
     validate.add_argument("--skip-lean", action="store_true")
     validate.add_argument("--test1-heartbeats", type=int, default=40000)
     validate.add_argument("--test2-heartbeats", type=int, default=200000)
@@ -671,10 +708,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--models", default="openai:gpt-4.1-mini")
     run.add_argument("--k", type=int, default=1)
     run.add_argument("--mock", action="store_true", help="Use expected proposition as model output")
-    run.add_argument("--dataset-dir", default=str(_default_dataset_dir()))
-    run.add_argument("--lean-dir", default=str(_default_lean_dir()))
-    run.add_argument("--results-root", default=str(_default_results_root()))
-    run.add_argument("--cache-root", default=str(_default_cache_root()))
+    run.add_argument("--dataset-dir", default=str(default_dataset_dir()))
+    run.add_argument("--lean-dir", default=str(default_lean_dir()))
+    run.add_argument("--results-root", default=str(default_results_root()))
+    run.add_argument("--cache-root", default=str(default_cache_root()))
     run.add_argument("--run-id", default="")
     run.add_argument("--mathlib-rev", default=os.getenv("MATHLIB_REV", ""))
     run.add_argument("--prompt-version", default=BENCHMARK_PROMPT_VERSION)
@@ -692,6 +729,62 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report")
     report.add_argument("--run-dir", required=True)
     report.set_defaults(func=cmd_report)
+
+    tools = sub.add_parser("tools", help="Local Lean tools for snippet inspection and verification")
+    tools_sub = tools.add_subparsers(dest="tools_cmd", required=True)
+
+    tools_check = tools_sub.add_parser(
+        "check",
+        help="Compile full Lean content and return structured status",
+    )
+    tools_check.add_argument("--content", required=True, help="Path to file containing full Lean content")
+    tools_check.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_check.add_argument("--timeout", type=float, default=30.0)
+    tools_check.set_defaults(func=cmd_tools_check)
+
+    tools_verify = tools_sub.add_parser(
+        "verify-proof",
+        help="Verify candidate declarations against a formal spec snippet",
+        description=(
+            "Inputs are declaration snippets, not full modules. "
+            "--formal is wrapped in namespace Spec and --content in namespace Cand."
+        ),
+    )
+    tools_verify.add_argument(
+        "--formal",
+        required=True,
+        help="Path to formal declaration snippet (wrapped in namespace Spec)",
+    )
+    tools_verify.add_argument(
+        "--content",
+        required=True,
+        help="Path to candidate declaration snippet (wrapped in namespace Cand)",
+    )
+    tools_verify.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_verify.add_argument(
+        "--permitted-sorries",
+        default="",
+        help="Comma-separated candidate-relative suffixes (example: helper,Sub.helper)",
+    )
+    tools_verify.add_argument("--timeout", type=float, default=30.0)
+    tools_verify.set_defaults(func=cmd_tools_verify_proof)
+
+    tools_extract = tools_sub.add_parser(
+        "extract-theorems",
+        help="Extract theorem metadata and dependencies from a declaration snippet",
+        description=(
+            "Input is a declaration snippet, not a full module. "
+            "--content is wrapped in namespace ExtractTmp."
+        ),
+    )
+    tools_extract.add_argument(
+        "--content",
+        required=True,
+        help="Path to declaration snippet (wrapped in namespace ExtractTmp)",
+    )
+    tools_extract.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_extract.add_argument("--timeout", type=float, default=30.0)
+    tools_extract.set_defaults(func=cmd_tools_extract_theorems)
 
     return parser
 

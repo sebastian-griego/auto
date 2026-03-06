@@ -3,17 +3,9 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from .lean_tools import check_content, extract_theorems, verify_proof
 from .lean_runner import classify_failure, run_lean_file
-
-
-def _find_repo_root() -> Path:
-    cwd = Path.cwd().resolve()
-    for candidate in (cwd, *cwd.parents):
-        if (candidate / "lean" / "lean-toolchain").is_file() and (
-            candidate / "harness" / "src" / "autoform_eval"
-        ).is_dir():
-            return candidate
-    raise RuntimeError("could not locate repository root from current working directory")
+from .paths import default_lean_dir
 
 
 def _render_case(
@@ -79,10 +71,7 @@ def _assert_case(
         )
 
 
-def main() -> None:
-    repo_root = _find_repo_root()
-    lean_dir = repo_root / "lean"
-
+def _run_checker_smoke(lean_dir: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="autoform_smoke_", dir="/tmp") as tmp:
         work_dir = Path(tmp)
 
@@ -135,6 +124,146 @@ def main() -> None:
             expect_ok=True,
         )
 
+
+def _run_tools_smoke() -> None:
+    check_res = check_content(
+        content="\n".join(
+            [
+                "set_option autoImplicit false",
+                "",
+                "theorem smoke_check : (1 + 1 : Nat) = 2 := by",
+                "  decide",
+            ]
+        ),
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if not bool(check_res.get("okay")):
+        raise AssertionError(f"check_content expected success, got {check_res}")
+
+    formal_add_comm = "\n".join(
+        [
+            "theorem add_comm (a b : Nat) : a + b = b + a := by",
+            "  sorry",
+        ]
+    )
+    cand_add_comm = "\n".join(
+        [
+            "theorem add_comm (a b : Nat) : a + b = b + a := by",
+            "  exact Nat.add_comm a b",
+        ]
+    )
+    verify_ok = verify_proof(
+        formal_statement=formal_add_comm,
+        content=cand_add_comm,
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if not bool(verify_ok.get("okay")):
+        raise AssertionError(f"verify_proof expected success, got {verify_ok}")
+
+    cand_wrong = "\n".join(
+        [
+            "theorem add_comm (a b : Nat) : a + b = a + b := by",
+            "  rfl",
+        ]
+    )
+    verify_wrong = verify_proof(
+        formal_statement=formal_add_comm,
+        content=cand_wrong,
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if bool(verify_wrong.get("okay")):
+        raise AssertionError(f"verify_proof expected failure on wrong statement, got {verify_wrong}")
+    failed_decls = verify_wrong.get("failed_declarations", [])
+    if "add_comm" not in failed_decls:
+        raise AssertionError(f"verify_proof wrong-statement case missing add_comm in failures: {verify_wrong}")
+
+    cand_extra_sorry = "\n".join(
+        [
+            "theorem add_comm (a b : Nat) : a + b = b + a := by",
+            "  exact Nat.add_comm a b",
+            "",
+            "theorem helper (n : Nat) : n = n := by",
+            "  sorry",
+        ]
+    )
+    verify_sorry = verify_proof(
+        formal_statement=formal_add_comm,
+        content=cand_extra_sorry,
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if bool(verify_sorry.get("okay")):
+        raise AssertionError(f"verify_proof expected failure on extra sorry helper, got {verify_sorry}")
+    sorry_errors = verify_sorry.get("errors", [])
+    if not any(str(err).startswith("candidate_sorry:") for err in sorry_errors):
+        raise AssertionError(f"verify_proof extra-sorry case missing candidate_sorry error: {verify_sorry}")
+
+    cand_extra_axiom = "\n".join(
+        [
+            "theorem add_comm (a b : Nat) : a + b = b + a := by",
+            "  exact Nat.add_comm a b",
+            "",
+            "axiom extra_bad : True",
+        ]
+    )
+    verify_axiom = verify_proof(
+        formal_statement=formal_add_comm,
+        content=cand_extra_axiom,
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if bool(verify_axiom.get("okay")):
+        raise AssertionError(f"verify_proof expected failure on extra candidate axiom, got {verify_axiom}")
+    axiom_errors = verify_axiom.get("errors", [])
+    if not any(str(err).startswith("extra_candidate_axiom:") for err in axiom_errors):
+        raise AssertionError(f"verify_proof extra-axiom case missing extra_candidate_axiom error: {verify_axiom}")
+
+    extract_content = "\n".join(
+        [
+            "def helper (n : Nat) : Nat := n + 1",
+            "",
+            "theorem t1 (n : Nat) : helper n = n + 1 := by",
+            "  rfl",
+            "",
+            "theorem t2 (a b : Nat) : a + b = b + a := by",
+            "  simpa using Nat.add_comm a b",
+        ]
+    )
+    extract_res = extract_theorems(
+        content=extract_content,
+        imports=["Init"],
+        timeout_seconds=30.0,
+    )
+    if not bool(extract_res.get("okay")):
+        raise AssertionError(f"extract_theorems expected success, got {extract_res}")
+    if int(extract_res.get("theorem_count", -1)) != 2:
+        raise AssertionError(f"extract_theorems theorem_count mismatch: {extract_res}")
+    theorem_rows = extract_res.get("theorems", [])
+    theorem_names = {row.get("name") for row in theorem_rows if isinstance(row, dict)}
+    if "t1" not in theorem_names or "t2" not in theorem_names:
+        raise AssertionError(f"extract_theorems missing theorem names: {extract_res}")
+    required_dep_fields = {
+        "local_type_dependencies",
+        "local_value_dependencies",
+        "external_type_dependencies",
+        "external_value_dependencies",
+    }
+    for row in theorem_rows:
+        if not isinstance(row, dict):
+            raise AssertionError(f"extract_theorems theorem row is not an object: {extract_res}")
+        if not str(row.get("type", "")).strip():
+            raise AssertionError(f"extract_theorems theorem type must be nonempty: {extract_res}")
+        if not required_dep_fields.issubset(row.keys()):
+            raise AssertionError(f"extract_theorems theorem row missing dependency fields: {extract_res}")
+
+
+def main() -> None:
+    lean_dir = default_lean_dir()
+    _run_checker_smoke(lean_dir)
+    _run_tools_smoke()
     print("smoke tests passed")
 
 

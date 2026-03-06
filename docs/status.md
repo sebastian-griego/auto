@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-03-03
+- Date: 2026-03-05
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -109,6 +109,7 @@
 - [x] Dataset parsing now accepts `assistant_generated` provenance and canonicalizes `fin_truth_table_norm` -> `fin_truth_table`
 - [x] Validator now allows `def` in `context` only and enforces family/check-key consistency (`check_key_mismatch:*`)
 - [x] Lean checker dispatch now accepts `fin_truth_table_norm` alias while enforcing `fin_truth_table_v1` fragment
+- [x] Added local Lean tools layer (`check`, `verify-proof`, `extract-theorems`) with shared path helpers, cache-backed Python API, CLI integration, and smoke coverage
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts
