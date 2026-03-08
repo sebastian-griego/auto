@@ -1,12 +1,10 @@
 # Families
 
-## Tier A (priority)
+## Supported Families
 - `ring_identity` -> `ring_identity_norm`
 - `fin_truth_table` -> `fin_truth_table`
-
-## Tier B (after stabilization)
 - `set_equality` -> `set_equality_norm`
-- linear inequality fragment (TBD)
+- `linear_inequality` -> `linear_inequality_norm`
 
 ## Notes
 - `ring_identity_norm` currently supports a deterministic restricted grammar:
@@ -27,9 +25,20 @@
   - `ring_identity_norm_v1`
   - `ring_identity_norm_v2`
   - `fin_truth_table_v1`
+  - `linear_inequality_norm_v1`
   - `set_equality_norm_v0` (compatibility path)
   - `set_equality_norm_v1` (deterministic finite assignment + extensional side comparison)
 - `fin_truth_table` uses a per-item enum cap (from `enum_cap:<N>` tag) rendered into Test2 and checked in Lean.
 - `set_equality_norm_v1` uses per-item `set_enum_cap:<N>` metadata.
 - `set_equality` rows should keep expected terms in direct equality form (`A = B`) with set-typed sides.
   Extensional membership forms (`∀ x, x ∈ A ↔ x ∈ B`) are intentionally out of fragment.
+- `linear_inequality_norm_v1` is a strict, conservative affine fragment:
+  leading binders must be `Nat` or `Int`, and the body must be `lhs < rhs` or `lhs <= rhs`.
+  Allowed expression syntax is bound variables, nonnegative numerals, `+`, parentheses, and numeral scalar multiplication.
+  The deterministic checker normalizes both sides to a canonical affine constraint
+  `a1*x1 + ... + an*xn + c < 0` or `a1*x1 + ... + an*xn + c <= 0` in quantified-binder order,
+  then compares the exact normalized relation kind, coefficients, and constant.
+  Intentionally unsupported: nonlinear multiplication, division, subtraction surface syntax, negative literals,
+  `abs`, `max`, `min`, `let`, lambdas, `if`, theorem declarations, `by`, and `sorry`.
+  Intentionally unsupported equivalences include inequality reversal, `<` vs `<=`, factor cancellation,
+  and solving-style rewrites beyond direct affine normalization.

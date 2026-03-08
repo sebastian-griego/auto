@@ -1,6 +1,7 @@
 import Lean
 import AutoformalizationEval.Families.RingIdentity
 import AutoformalizationEval.Families.FinTruthTable
+import AutoformalizationEval.Families.LinearInequality
 import AutoformalizationEval.Families.SetEquality
 
 open Lean Meta Elab Command
@@ -97,6 +98,9 @@ def checkFamily (checkKey : String) (fragmentKey : String) (enumCap : Nat) (cand
           Families.checkSetEqualityV1 cand expected enumCap
       | _ =>
           throwFragmentKeyMismatch checkKey fragmentKey ["set_equality_norm_v0", "set_equality_norm_v1"]
+  | "linear_inequality_norm" =>
+      requireFragmentKey checkKey fragmentKey "linear_inequality_norm_v1"
+      Families.checkLinearInequalityV1 cand expected
   | _ => throwError "[semantic_fail] unknown_check_key:{checkKey}"
 
 /-- Command-level entrypoint used by rendered Test2 files. -/

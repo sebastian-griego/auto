@@ -1,7 +1,7 @@
 # Status Tracker
 
 ## Snapshot
-- Date: 2026-03-06
+- Date: 2026-03-08
 - Phase: Milestone 1 bootstrap
 - Status: In progress
 
@@ -111,6 +111,7 @@
 - [x] Lean checker dispatch now accepts `fin_truth_table_norm` alias while enforcing `fin_truth_table_v1` fragment
 - [x] Added local Lean tools layer (`check`, `verify-proof`, `extract-theorems`) with shared path helpers, cache-backed Python API, CLI integration, and smoke coverage
 - [x] Local Lean tools upgraded with source-aware cache invalidation metadata, shared preamble support, new `inspect-prop` command, internal-name filtering, and expanded smoke coverage
+- [x] Added deterministic `linear_inequality` family with strict affine normalization (`linear_inequality_norm_v1`), validator/prompt/mutation wiring, smoke coverage, and Lean regression script
 
 ## In Progress
 - [ ] Verify CI is green on latest commits after pushing freeze/baseline artifacts

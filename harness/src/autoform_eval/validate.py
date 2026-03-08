@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .dataset import iter_all_splits, load_split
+from .linear_inequality import LinearInequalityParseError, parse_linear_inequality
 from .lean_runner import classify_failure, run_lean_file
 from .mutate import generate_mutants
 from .prompt import BENCHMARK_PROMPT_VERSION
@@ -69,6 +70,7 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
     required_check_by_family = {
         "ring_identity": "ring_identity_norm",
         "fin_truth_table": "fin_truth_table",
+        "linear_inequality": "linear_inequality_norm",
         "set_equality": "set_equality_norm",
     }
     required_check = required_check_by_family.get(item.family)
@@ -120,6 +122,10 @@ def _dataset_family_issues(item: DatasetItem) -> list[str]:
                     f"tag={set_enum_cap}:required={required_cap}:"
                     f"outer={outer_count}:carrier={carrier_size}"
                 )
+    elif item.family == "linear_inequality":
+        fragment_issue = _linear_inequality_fragment_issue(item.expected)
+        if fragment_issue is not None:
+            issues.append(fragment_issue)
     return issues
 
 
@@ -212,6 +218,14 @@ def _set_side_is_set_like(side: str) -> bool:
     if text.startswith("fun ") or text.startswith("λ"):
         return True
     return any(marker in text for marker in SET_SIDE_MARKERS)
+
+
+def _linear_inequality_fragment_issue(expected: str) -> str | None:
+    try:
+        parse_linear_inequality(expected)
+    except LinearInequalityParseError as exc:
+        return f"linear_inequality_expected_fragment:{exc.code}"
+    return None
 
 
 def _extract_set_carrier_type(side: str) -> str | None:

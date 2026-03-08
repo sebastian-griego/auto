@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import re
 
+from .linear_inequality import (
+    LinearInequalityParseError,
+    LinearInequalitySpec,
+    parse_linear_inequality,
+    render_linear_inequality,
+)
 from .types import DatasetItem
 
 LEADING_FORALL_RE = re.compile(r"^\s*(?:\u2200|forall)\s+([^:]+?)\s*:\s*([^,]+?)\s*,\s*(.*)$", re.DOTALL)
@@ -162,12 +168,69 @@ def _mutate_set_equality(expr: str) -> list[str]:
     return muts
 
 
+def _replace_linear_spec(
+    spec: LinearInequalitySpec,
+    *,
+    relation: str | None = None,
+    coeffs: tuple[int, ...] | None = None,
+    const: int | None = None,
+) -> LinearInequalitySpec:
+    return LinearInequalitySpec(
+        binders=spec.binders,
+        relation=relation if relation is not None else spec.relation,
+        coeffs=coeffs if coeffs is not None else spec.coeffs,
+        const=const if const is not None else spec.const,
+    )
+
+
+def _mutate_linear_inequality(expr: str) -> list[str]:
+    try:
+        spec = parse_linear_inequality(expr)
+    except LinearInequalityParseError:
+        return []
+
+    muts: list[str] = []
+
+    flipped_rel = "<=" if spec.relation == "<" else "<"
+    muts.append(render_linear_inequality(_replace_linear_spec(spec, relation=flipped_rel)))
+
+    muts.append(
+        render_linear_inequality(
+            _replace_linear_spec(
+                spec,
+                coeffs=tuple(-coeff for coeff in spec.coeffs),
+                const=-spec.const,
+            )
+        )
+    )
+
+    muts.append(render_linear_inequality(_replace_linear_spec(spec, const=spec.const + 1)))
+
+    coeffs = list(spec.coeffs)
+    if coeffs:
+        idx = next((i for i, coeff in enumerate(coeffs) if coeff != 0), 0)
+        coeffs[idx] = coeffs[idx] + 1 if coeffs[idx] >= 0 else coeffs[idx] - 1
+        muts.append(render_linear_inequality(_replace_linear_spec(spec, coeffs=tuple(coeffs))))
+
+        sign_flipped = list(spec.coeffs)
+        sign_flipped[idx] = -sign_flipped[idx] if sign_flipped[idx] != 0 else 1
+        muts.append(render_linear_inequality(_replace_linear_spec(spec, coeffs=tuple(sign_flipped))))
+    elif spec.const != 0:
+        muts.append(render_linear_inequality(_replace_linear_spec(spec, const=-spec.const)))
+    else:
+        muts.append(render_linear_inequality(_replace_linear_spec(spec, const=1)))
+
+    return muts
+
+
 def generate_mutants(item: DatasetItem, max_mutants: int = 3) -> list[str]:
     expected = item.expected
     if item.family == "ring_identity":
         muts = _mutate_ring(expected)
     elif item.family == "fin_truth_table":
         muts = _mutate_fin_truth_table(expected)
+    elif item.family == "linear_inequality":
+        muts = _mutate_linear_inequality(expected)
     elif item.family == "set_equality":
         muts = _mutate_set_equality(expected)
     else:

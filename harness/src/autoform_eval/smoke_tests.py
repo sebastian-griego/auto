@@ -124,6 +124,86 @@ def _run_checker_smoke(lean_dir: Path) -> None:
             expect_ok=True,
         )
 
+        lin_expected = "∀ x y : Int, x + y + y <= 7"
+        _assert_case(
+            case_name="linear_inequality_equiv_rearrangement_pass",
+            lean_dir=lean_dir,
+            work_dir=work_dir,
+            content=_render_case(
+                cand="∀ x y : Int, x + (2 * y) + 3 <= 10",
+                expected=lin_expected,
+                family="linear_inequality",
+                check_key="linear_inequality_norm",
+                fragment_key="linear_inequality_norm_v1",
+                enum_cap=0,
+            ),
+            expect_ok=True,
+        )
+
+        _assert_case(
+            case_name="linear_inequality_relation_mismatch_fail",
+            lean_dir=lean_dir,
+            work_dir=work_dir,
+            content=_render_case(
+                cand="∀ x y : Int, x + y + y < 7",
+                expected=lin_expected,
+                family="linear_inequality",
+                check_key="linear_inequality_norm",
+                fragment_key="linear_inequality_norm_v1",
+                enum_cap=0,
+            ),
+            expect_ok=False,
+            expect_stderr_contains="[semantic_fail] linear_inequality_relation_mismatch",
+        )
+
+        _assert_case(
+            case_name="linear_inequality_coeff_mismatch_fail",
+            lean_dir=lean_dir,
+            work_dir=work_dir,
+            content=_render_case(
+                cand="∀ x y : Int, x + y <= 7",
+                expected=lin_expected,
+                family="linear_inequality",
+                check_key="linear_inequality_norm",
+                fragment_key="linear_inequality_norm_v1",
+                enum_cap=0,
+            ),
+            expect_ok=False,
+            expect_stderr_contains="[semantic_fail] linear_inequality_mismatch",
+        )
+
+        _assert_case(
+            case_name="linear_inequality_nonlinear_fail",
+            lean_dir=lean_dir,
+            work_dir=work_dir,
+            content=_render_case(
+                cand="∀ x y : Int, x * y <= 7",
+                expected=lin_expected,
+                family="linear_inequality",
+                check_key="linear_inequality_norm",
+                fragment_key="linear_inequality_norm_v1",
+                enum_cap=0,
+            ),
+            expect_ok=False,
+            expect_stderr_contains="[semantic_fail] linear_inequality_unsupported_cand:nonlinear_mul",
+        )
+
+        _assert_case(
+            case_name="linear_inequality_wrong_outer_form_fail",
+            lean_dir=lean_dir,
+            work_dir=work_dir,
+            content=_render_case(
+                cand="∀ x y : Int, x + y = 7",
+                expected=lin_expected,
+                family="linear_inequality",
+                check_key="linear_inequality_norm",
+                fragment_key="linear_inequality_norm_v1",
+                enum_cap=0,
+            ),
+            expect_ok=False,
+            expect_stderr_contains="[shape_fail] expected_lt_or_le",
+        )
+
 
 def _run_tools_smoke() -> None:
     check_res = check_content(

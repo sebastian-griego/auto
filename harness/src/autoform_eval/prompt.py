@@ -10,16 +10,19 @@ _FRAGMENT_BY_CHECK_KEY_BY_PROMPT = {
     "v1.0.0": {
         "ring_identity_norm": "ring_identity_norm_v1",
         "fin_truth_table": "fin_truth_table_v1",
+        "linear_inequality_norm": "linear_inequality_norm_v1",
         "set_equality_norm": "set_equality_norm_v0",
     },
     "v1.1.0": {
         "ring_identity_norm": "ring_identity_norm_v2",
         "fin_truth_table": "fin_truth_table_v1",
+        "linear_inequality_norm": "linear_inequality_norm_v1",
         "set_equality_norm": "set_equality_norm_v1",
     },
     "v1.2.0": {
         "ring_identity_norm": "ring_identity_norm_v2",
         "fin_truth_table": "fin_truth_table_v1",
+        "linear_inequality_norm": "linear_inequality_norm_v1",
         "set_equality_norm": "set_equality_norm_v1",
     },
 }
@@ -66,6 +69,14 @@ def _family_rules(item: DatasetItem, fragment_key: str) -> str:
             f"Fragment {fragment_key}: output must be a set equality statement of the form "
             "`..., A = B`, where `A` and `B` are sets (`Set α` or `α → Prop`). "
             "Do not rewrite as an extensional proposition like `∀ x, x ∈ A ↔ x ∈ B`."
+        )
+    if item.family == "linear_inequality":
+        return (
+            f"Fragment {fragment_key}: use only universally quantified inequalities with body "
+            "`lhs < rhs` or `lhs <= rhs`. Leading binders must be `Nat` or `Int`. "
+            "Affine expressions may use only bound variables, nonnegative numerals, `+`, parentheses, "
+            "and numeral scalar multiplication. Do not use nonlinear multiplication, division, "
+            "`abs`, `max`, `min`, `let`, lambdas, `if`, theorem declarations, `by`, or `sorry`."
         )
     return "Stay inside the declared family fragment."
 
