@@ -16,8 +16,6 @@ FORBIDDEN_KEYWORDS = (
     "sorry",
 )
 
-BLOCK_COMMENT_RE = re.compile(r"/-.*?-/", re.DOTALL)
-LINE_COMMENT_RE = re.compile(r"--.*$", re.MULTILINE)
 FENCE_RE = re.compile(r"```(?:[a-zA-Z0-9_+-]+)?\s*(.*?)```", re.DOTALL)
 
 
@@ -30,14 +28,57 @@ def strip_markdown_fences(text: str) -> ParseResult:
     return ParseResult(True, text.strip(), None)
 
 
+def _append_comment_space(out: list[str]) -> None:
+    if out and not out[-1].isspace():
+        out.append(" ")
+
+
+def _strip_comments_with_status(text: str) -> tuple[str, bool]:
+    out: list[str] = []
+    i = 0
+    block_depth = 0
+    while i < len(text):
+        if block_depth > 0:
+            if text.startswith("/-", i):
+                block_depth += 1
+                i += 2
+                continue
+            if text.startswith("-/", i):
+                block_depth -= 1
+                i += 2
+                if block_depth == 0:
+                    _append_comment_space(out)
+                continue
+            if text[i] == "\n" and (not out or out[-1] != "\n"):
+                out.append("\n")
+            i += 1
+            continue
+
+        if text.startswith("/-", i):
+            _append_comment_space(out)
+            block_depth = 1
+            i += 2
+            continue
+
+        if text.startswith("--", i):
+            _append_comment_space(out)
+            i += 2
+            while i < len(text) and text[i] != "\n":
+                i += 1
+            if i < len(text) and text[i] == "\n":
+                out.append("\n")
+                i += 1
+            continue
+
+        out.append(text[i])
+        i += 1
+
+    return "".join(out), block_depth == 0
+
+
 def strip_comments(text: str) -> str:
-    prev = text
-    while True:
-        nxt = BLOCK_COMMENT_RE.sub("", prev)
-        if nxt == prev:
-            break
-        prev = nxt
-    return LINE_COMMENT_RE.sub("", prev)
+    stripped, _terminated = _strip_comments_with_status(text)
+    return stripped
 
 
 def unwrap_inline_code(text: str) -> str:
@@ -75,7 +116,9 @@ def parse_candidate(raw_text: str, forbidden_ok: set[str] | None = None, strict_
     if not fenced.accepted:
         return fenced
 
-    no_comments = strip_comments(fenced.candidate)
+    no_comments, comments_terminated = _strip_comments_with_status(fenced.candidate)
+    if not comments_terminated:
+        return ParseResult(False, no_comments.strip(), "unterminated_block_comment")
     candidate = unwrap_inline_code(no_comments)
     if not candidate:
         return ParseResult(False, "", "empty_candidate")

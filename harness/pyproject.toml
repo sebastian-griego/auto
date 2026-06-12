@@ -13,6 +13,7 @@ dependencies = []
 [project.optional-dependencies]
 openai = ["openai>=1.0.0"]
 gemini = ["google-genai>=0.4.0"]
+dev = ["pytest>=7"]
 
 [project.scripts]
 autoform-eval = "autoform_eval.cli:main"
