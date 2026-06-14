@@ -37,6 +37,7 @@ Then:
 ```bash
 cd harness
 python -m autoform_eval.cli validate --split pilot
+python -m autoform_eval.cli audit --output-json ../dataset/audit.json --output-md ../dataset/audit.md
 ```
 
 Run ring checker regressions:
@@ -49,6 +50,15 @@ Run a tiny mock eval:
 cd harness
 python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 ```
+
+Run a fast dataset-wide benchmark health audit without Lean:
+```bash
+cd harness
+python -m autoform_eval.cli audit
+```
+
+Add `--min-per-family-split N` when you want the audit to fail on family/split
+coverage gaps.
 
 Run local Lean inspection utilities (`check`, `verify-proof`, `extract-theorems`, `inspect-prop`):
 ```bash

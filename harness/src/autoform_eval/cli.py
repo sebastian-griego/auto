@@ -10,12 +10,18 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import GeminiAdapter, OpenAIAdapter
+from .audit import audit_dataset, write_audit_json, write_audit_markdown
 from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
 from .lean_tools import check_content, extract_theorems, inspect_prop, verify_proof
 from .lean_runner import classify_failure, run_lean_file
 from .parse import parse_candidate
-from .paths import default_cache_root, default_dataset_dir, default_lean_dir, default_results_root
+from .paths import (
+    default_cache_root,
+    default_dataset_dir,
+    default_lean_dir,
+    default_results_root,
+)
 from .prompt import (
     BENCHMARK_PROMPT_VERSION,
     SUPPORTED_PROMPT_VERSIONS,
@@ -60,7 +66,9 @@ def _read_mathlib_rev(lean_dir: Path) -> str:
     if not lakefile.exists():
         return "unknown"
     text = lakefile.read_text(encoding="utf-8")
-    match = re.search(r'require\s+mathlib\s+from\s+git\s+".*?"\s+@\s+"([^"]+)"', text, re.DOTALL)
+    match = re.search(
+        r'require\s+mathlib\s+from\s+git\s+".*?"\s+@\s+"([^"]+)"', text, re.DOTALL
+    )
     if not match:
         return "unknown"
     return match.group(1).strip() or "unknown"
@@ -106,7 +114,11 @@ def _generate_candidate_with_retries(
     last_error_transient = False
     for attempt_idx in range(retries + 1):
         try:
-            return adapter.generate(model=model, prompt=prompt, params=params), None, False
+            return (
+                adapter.generate(model=model, prompt=prompt, params=params),
+                None,
+                False,
+            )
         except Exception as exc:  # noqa: BLE001
             provider_error = f"provider_error:{type(exc).__name__}:{exc}"
             last_error = provider_error
@@ -201,10 +213,20 @@ def _run_attempt(
     else:
         if model_cache:
             provider_error = model_cache.get("provider_error")
-            provider_error_cacheable = bool(model_cache.get("provider_error_cacheable", True))
-            if isinstance(provider_error, str) and provider_error and _is_transient_provider_error(provider_error):
+            provider_error_cacheable = bool(
+                model_cache.get("provider_error_cacheable", True)
+            )
+            if (
+                isinstance(provider_error, str)
+                and provider_error
+                and _is_transient_provider_error(provider_error)
+            ):
                 provider_error_cacheable = False
-            if isinstance(provider_error, str) and provider_error and provider_error_cacheable:
+            if (
+                isinstance(provider_error, str)
+                and provider_error
+                and provider_error_cacheable
+            ):
                 return _provider_error_attempt(
                     reason=provider_error,
                     candidate_raw="",
@@ -217,20 +239,25 @@ def _run_attempt(
         if mock:
             candidate_raw = item.expected
         else:
-            generated_candidate, provider_error, provider_error_transient = _generate_candidate_with_retries(
-                provider=provider,
-                model=model,
-                prompt=prompt,
-                params=params,
-                retries=provider_retries,
-                retry_backoff_s=provider_retry_backoff_s,
+            generated_candidate, provider_error, provider_error_transient = (
+                _generate_candidate_with_retries(
+                    provider=provider,
+                    model=model,
+                    prompt=prompt,
+                    params=params,
+                    retries=provider_retries,
+                    retry_backoff_s=provider_retry_backoff_s,
+                )
             )
             if provider_error:
                 if not provider_error_transient:
                     cache.set(
                         "model",
                         cache_key_model,
-                        {"provider_error": provider_error, "provider_error_cacheable": True},
+                        {
+                            "provider_error": provider_error,
+                            "provider_error_cacheable": True,
+                        },
                     )
                 return _provider_error_attempt(
                     reason=provider_error,
@@ -243,7 +270,9 @@ def _run_attempt(
             candidate_raw = generated_candidate or ""
         cache.set("model", cache_key_model, {"candidate_raw": candidate_raw})
 
-    parse_res = parse_candidate(candidate_raw, forbidden_ok=set(item.forbidden_ok), strict_reject_assign=False)
+    parse_res = parse_candidate(
+        candidate_raw, forbidden_ok=set(item.forbidden_ok), strict_reject_assign=False
+    )
     if not parse_res.accepted:
         return {
             "test1_pass": False,
@@ -283,9 +312,11 @@ def _run_attempt(
     lean_key1 = stable_hash(
         json.dumps(
             {
-                "toolchain": (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip()
-                if (lean_dir / "lean-toolchain").exists()
-                else "",
+                "toolchain": (
+                    (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip()
+                    if (lean_dir / "lean-toolchain").exists()
+                    else ""
+                ),
                 "rendered": t1_content,
                 "hb": hb1,
                 "timeout": timeout1_s,
@@ -319,8 +350,12 @@ def _run_attempt(
             },
         )
 
-    t1_stderr_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
-    t1_stdout_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
+    t1_stderr_path = (
+        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
+    )
+    t1_stdout_path = (
+        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
+    )
     t1_stderr_path.write_text(t1_stderr, encoding="utf-8")
     t1_stdout_path.write_text(t1_stdout, encoding="utf-8")
     t1_stderr_rel = str(t1_stderr_path.relative_to(run_dir))
@@ -350,7 +385,9 @@ def _run_attempt(
             "test2_stderr_log_path": "",
         }
 
-    t2_content = render_test2(lean_dir, item, candidate, hb2, prompt_version=prompt_version)
+    t2_content = render_test2(
+        lean_dir, item, candidate, hb2, prompt_version=prompt_version
+    )
     t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
     t2_path.write_text(t2_content, encoding="utf-8")
     t2_rendered_rel = str(t2_path.relative_to(run_dir))
@@ -358,9 +395,11 @@ def _run_attempt(
     lean_key2 = stable_hash(
         json.dumps(
             {
-                "toolchain": (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip()
-                if (lean_dir / "lean-toolchain").exists()
-                else "",
+                "toolchain": (
+                    (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip()
+                    if (lean_dir / "lean-toolchain").exists()
+                    else ""
+                ),
                 "rendered": t2_content,
                 "hb": hb2,
                 "timeout": timeout2_s,
@@ -394,8 +433,12 @@ def _run_attempt(
             },
         )
 
-    t2_stderr_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
-    t2_stdout_path = logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
+    t2_stderr_path = (
+        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
+    )
+    t2_stdout_path = (
+        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
+    )
     t2_stderr_path.write_text(t2_stderr, encoding="utf-8")
     t2_stdout_path.write_text(t2_stdout, encoding="utf-8")
     t2_stderr_rel = str(t2_stderr_path.relative_to(run_dir))
@@ -436,8 +479,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
         )
         return 2
 
-    budget1_ms = args.budget1_ms if args.budget1_ms is not None else int(args.timeout1 * 1000)
-    budget2_ms = args.budget2_ms if args.budget2_ms is not None else int(args.timeout2 * 1000)
+    budget1_ms = (
+        args.budget1_ms if args.budget1_ms is not None else int(args.timeout1 * 1000)
+    )
+    budget2_ms = (
+        args.budget2_ms if args.budget2_ms is not None else int(args.timeout2 * 1000)
+    )
     try:
         summary = validate_split(
             dataset_dir=Path(args.dataset_dir),
@@ -460,7 +507,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"dataset error: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps({"split": summary["split"], "total": summary["total"], "invalid": summary["invalid"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "split": summary["split"],
+                "total": summary["total"],
+                "invalid": summary["invalid"],
+            },
+            indent=2,
+        )
+    )
     return 0 if summary["invalid"] == 0 else 1
 
 
@@ -487,13 +543,20 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not token:
             continue
         if ":" not in token:
-            print(f"invalid model token '{token}', expected provider:model", file=sys.stderr)
+            print(
+                f"invalid model token '{token}', expected provider:model",
+                file=sys.stderr,
+            )
             return 2
         provider, model = token.split(":", 1)
         models.append((provider.strip(), model.strip()))
 
     records: list[dict[str, Any]] = []
-    toolchain = (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip() if (lean_dir / "lean-toolchain").exists() else ""
+    toolchain = (
+        (lean_dir / "lean-toolchain").read_text(encoding="utf-8").strip()
+        if (lean_dir / "lean-toolchain").exists()
+        else ""
+    )
     mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
     if not mathlib_rev or mathlib_rev == "unknown":
         mathlib_rev = _read_mathlib_rev(lean_dir)
@@ -513,7 +576,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                         item=item,
                         provider=provider,
                         model=model,
-                        params={"temperature": args.temperature, "max_output_tokens": args.max_output_tokens},
+                        params={
+                            "temperature": args.temperature,
+                            "max_output_tokens": args.max_output_tokens,
+                        },
                         k_index=k_index,
                         lean_dir=lean_dir,
                         run_dir=run_dir,
@@ -542,7 +608,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "candidate_hash": "",
                         "prompt_hash": "",
                         "prompt_version": args.prompt_version,
-                        "fragment_key": fragment_for_item(item, prompt_version=args.prompt_version),
+                        "fragment_key": fragment_for_item(
+                            item, prompt_version=args.prompt_version
+                        ),
                         "prompt_text": None,
                         "test1_rendered_path": "",
                         "test2_rendered_path": "",
@@ -562,7 +630,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "provider": provider,
                     "model": model,
                     "attempt_index": k_index,
-                    "params": {"temperature": args.temperature, "max_output_tokens": args.max_output_tokens},
+                    "params": {
+                        "temperature": args.temperature,
+                        "max_output_tokens": args.max_output_tokens,
+                    },
                     "prompt_hash": attempt["prompt_hash"],
                     "prompt_version": attempt["prompt_version"],
                     "fragment_key": attempt["fragment_key"],
@@ -600,7 +671,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     write_summary(run_dir / "summary.json", summary)
     write_report(run_dir / "report.md", records, summary)
 
-    print(json.dumps({"run_id": run_id, "records": len(records), "path": str(run_dir)}, indent=2))
+    print(
+        json.dumps(
+            {"run_id": run_id, "records": len(records), "path": str(run_dir)}, indent=2
+        )
+    )
     return 0
 
 
@@ -624,6 +699,36 @@ def cmd_report(args: argparse.Namespace) -> int:
     write_report(run_dir / "report.md", records, summary)
     print(json.dumps({"run_dir": str(run_dir), "records": len(records)}, indent=2))
     return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    try:
+        audit = audit_dataset(
+            Path(args.dataset_dir),
+            min_per_family_split=args.min_per_family_split,
+        )
+    except DatasetError as exc:
+        print(f"dataset error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.output_json:
+        write_audit_json(Path(args.output_json), audit)
+    if args.output_md:
+        write_audit_markdown(Path(args.output_md), audit)
+
+    print(
+        json.dumps(
+            {
+                "dataset_dir": audit["dataset_dir"],
+                "issue_counts": audit["issue_counts"],
+                "issues": len(audit["issues"]),
+                "total_items": audit["total_items"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0 if not audit["issues"] else 1
 
 
 def _read_file(path: str) -> str:
@@ -728,8 +833,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--split", default="pilot")
     validate.add_argument("--dataset-dir", default=str(default_dataset_dir()))
     validate.add_argument("--lean-dir", default=str(default_lean_dir()))
-    validate.add_argument("--out-report", default=str(default_dataset_dir() / "validation_report.json"))
-    validate.add_argument("--rendered-dir", default=str(default_results_root() / "validate_rendered"))
+    validate.add_argument(
+        "--out-report", default=str(default_dataset_dir() / "validation_report.json")
+    )
+    validate.add_argument(
+        "--rendered-dir", default=str(default_results_root() / "validate_rendered")
+    )
     validate.add_argument("--skip-lean", action="store_true")
     validate.add_argument("--test1-heartbeats", type=int, default=40000)
     validate.add_argument("--test2-heartbeats", type=int, default=200000)
@@ -746,7 +855,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--split", default="pilot")
     run.add_argument("--models", default="openai:gpt-4.1-mini")
     run.add_argument("--k", type=int, default=1)
-    run.add_argument("--mock", action="store_true", help="Use expected proposition as model output")
+    run.add_argument(
+        "--mock", action="store_true", help="Use expected proposition as model output"
+    )
     run.add_argument("--dataset-dir", default=str(default_dataset_dir()))
     run.add_argument("--lean-dir", default=str(default_lean_dir()))
     run.add_argument("--results-root", default=str(default_results_root()))
@@ -769,15 +880,28 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--run-dir", required=True)
     report.set_defaults(func=cmd_report)
 
-    tools = sub.add_parser("tools", help="Local Lean tools for snippet inspection and verification")
+    audit = sub.add_parser("audit")
+    audit.add_argument("--dataset-dir", default=str(default_dataset_dir()))
+    audit.add_argument("--output-json", default="")
+    audit.add_argument("--output-md", default="")
+    audit.add_argument("--min-per-family-split", type=int, default=0)
+    audit.set_defaults(func=cmd_audit)
+
+    tools = sub.add_parser(
+        "tools", help="Local Lean tools for snippet inspection and verification"
+    )
     tools_sub = tools.add_subparsers(dest="tools_cmd", required=True)
 
     tools_check = tools_sub.add_parser(
         "check",
         help="Compile full Lean content and return structured status",
     )
-    tools_check.add_argument("--content", required=True, help="Path to file containing full Lean content")
-    tools_check.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_check.add_argument(
+        "--content", required=True, help="Path to file containing full Lean content"
+    )
+    tools_check.add_argument(
+        "--import", dest="imports", action="append", default=[], metavar="MODULE"
+    )
     tools_check.add_argument("--timeout", type=float, default=30.0)
     tools_check.add_argument("--no-cache", action="store_true")
     tools_check.set_defaults(func=cmd_tools_check)
@@ -800,7 +924,9 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Path to candidate declaration snippet (wrapped in namespace Cand)",
     )
-    tools_verify.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_verify.add_argument(
+        "--import", dest="imports", action="append", default=[], metavar="MODULE"
+    )
     tools_verify.add_argument(
         "--preamble",
         default="",
@@ -828,7 +954,9 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Path to declaration snippet (wrapped in namespace ExtractTmp)",
     )
-    tools_extract.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_extract.add_argument(
+        "--import", dest="imports", action="append", default=[], metavar="MODULE"
+    )
     tools_extract.add_argument(
         "--preamble",
         default="",
@@ -846,8 +974,12 @@ def build_parser() -> argparse.ArgumentParser:
             "--prop is wrapped as `def target : Prop := ...` inside namespace InspectTmp."
         ),
     )
-    tools_inspect.add_argument("--prop", required=True, help="Path to file containing a Prop term snippet")
-    tools_inspect.add_argument("--import", dest="imports", action="append", default=[], metavar="MODULE")
+    tools_inspect.add_argument(
+        "--prop", required=True, help="Path to file containing a Prop term snippet"
+    )
+    tools_inspect.add_argument(
+        "--import", dest="imports", action="append", default=[], metavar="MODULE"
+    )
     tools_inspect.add_argument(
         "--preamble",
         default="",
