@@ -34,6 +34,7 @@ from .report import (
     ResultError,
     compute_summary,
     load_results_jsonl,
+    validate_manifest_run_scope,
     verify_manifest,
     write_manifest,
     write_report,
@@ -768,6 +769,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     try:
         records = load_results_jsonl(results_path)
         summary = compute_summary(records)
+        validate_manifest_run_scope(run_dir, records)
         write_summary(run_dir / "summary.json", summary)
         write_report(run_dir / "report.md", records, summary)
         manifest = write_manifest(run_dir, records, summary)

@@ -444,6 +444,7 @@ def write_manifest(
     require_record_artifacts: bool = False,
 ) -> dict[str, Any]:
     validate_result_records(records)
+    run_id = validate_manifest_run_scope(run_dir, records)
 
     artifact_paths: set[str] = set()
     for rel_path in CORE_ARTIFACT_PATHS:
@@ -464,7 +465,7 @@ def write_manifest(
 
     manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
-        "run_id": _manifest_run_id(records),
+        "run_id": run_id,
         "total_attempts": int(summary.get("total_attempts", len(records))),
         "artifacts": [
             _manifest_entry(run_dir, rel_path) for rel_path in sorted(artifact_paths)
@@ -478,6 +479,27 @@ def write_manifest(
 
 def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def validate_manifest_run_scope(run_dir: Path, records: list[dict[str, Any]]) -> str:
+    validate_result_records(records)
+    run_ids = sorted(
+        {str(row.get("run_id", "")) for row in records if row.get("run_id")}
+    )
+    if len(run_ids) != 1:
+        shown = ", ".join(repr(run_id) for run_id in run_ids[:5])
+        suffix = "" if len(run_ids) <= 5 else ", ..."
+        raise ResultError(
+            f"manifest requires exactly one run_id, found {len(run_ids)}: "
+            f"{shown}{suffix}"
+        )
+    run_id = run_ids[0]
+    if run_id != run_dir.name:
+        raise ResultError(
+            f"manifest run_id {run_id!r} does not match run directory "
+            f"{run_dir.name!r}"
+        )
+    return run_id
 
 
 def verify_manifest(
@@ -499,6 +521,14 @@ def verify_manifest(
     if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
         raise ResultError(
             f"{manifest_path}: unsupported schema_version {manifest.get('schema_version')!r}"
+        )
+    manifest_run_id = manifest.get("run_id")
+    if not isinstance(manifest_run_id, str) or not manifest_run_id:
+        raise ResultError(f"{manifest_path}: run_id must be a non-empty string")
+    if manifest_run_id != run_dir.name:
+        raise ResultError(
+            f"{manifest_path}: run_id {manifest_run_id!r} does not match "
+            f"run directory {run_dir.name!r}"
         )
 
     artifacts = manifest.get("artifacts")
@@ -571,14 +601,6 @@ def verify_manifest(
             )
 
     return manifest
-
-
-def _manifest_run_id(records: list[dict[str, Any]]) -> str:
-    run_ids = sorted(
-        {str(row.get("run_id", "")) for row in records if row.get("run_id")}
-    )
-    return run_ids[0] if len(run_ids) == 1 else ""
-
 
 def _looks_like_sha256(value: str) -> bool:
     if len(value) != 64:

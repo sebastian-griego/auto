@@ -1,7 +1,8 @@
+import json
 from pathlib import Path
 
 from autoform_eval.cache import JsonCache
-from autoform_eval.cli import _prepare_run_dir, _run_attempt, _write_run_text
+from autoform_eval.cli import _prepare_run_dir, _run_attempt, _write_run_text, main
 from autoform_eval.types import DatasetItem, ProvenanceSpec, SemanticSpec
 
 
@@ -97,6 +98,36 @@ def test_run_attempt_records_test1_runner_exception_artifacts(
         run_dir / attempt["test1_stderr_log_path"]
     ).read_text(encoding="utf-8") == "runner_exception:RuntimeError:lean unavailable"
     assert (run_dir / attempt["test1_stdout_log_path"]).read_bytes() == b""
+
+
+def test_report_rejects_run_id_mismatch_before_writing_artifacts(tmp_path: Path):
+    run_dir = tmp_path / "copied"
+    run_dir.mkdir()
+    record = {
+        "run_id": "original",
+        "item_id": "a",
+        "split": "pilot",
+        "family": "ring_identity",
+        "tier": "A",
+        "provider": "mock",
+        "model": "mock",
+        "attempt_index": 1,
+        "bucket": "semantic_fail",
+        "test1_pass": False,
+        "test2_pass": False,
+        "shape_pass": None,
+    }
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["report", "--run-dir", str(run_dir)])
+
+    assert exit_code == 2
+    assert not (run_dir / "summary.json").exists()
+    assert not (run_dir / "report.md").exists()
+    assert not (run_dir / "manifest.json").exists()
 
 
 def _write_templates(lean_dir: Path) -> None:

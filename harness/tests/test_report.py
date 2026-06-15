@@ -159,6 +159,55 @@ def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
     assert verified["run_id"] == "run"
 
 
+def test_write_manifest_rejects_mixed_run_ids(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    first = _record("a")
+    second = _record("b")
+    second["run_id"] = "other"
+    records = [first, second]
+    summary = compute_summary(records)
+
+    with pytest.raises(ResultError, match="exactly one run_id"):
+        write_manifest(run_dir, records, summary)
+
+
+def test_write_manifest_rejects_run_dir_mismatch(tmp_path: Path):
+    run_dir = tmp_path / "copied"
+    run_dir.mkdir()
+    records = [_record("a")]
+    summary = compute_summary(records)
+
+    with pytest.raises(ResultError, match="does not match run directory"):
+        write_manifest(run_dir, records, summary)
+
+
+def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["run_id"] = "other"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResultError, match="does not match run directory"):
+        verify_manifest(run_dir)
+
+
 def test_verify_manifest_detects_modified_artifact(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
