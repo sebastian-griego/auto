@@ -56,6 +56,16 @@ RESULT_ARTIFACT_PATH_FIELDS = (
     "test2_stdout_log_path",
     "test2_stderr_log_path",
 )
+TEST1_ARTIFACT_PATH_FIELDS = (
+    "test1_rendered_path",
+    "test1_stdout_log_path",
+    "test1_stderr_log_path",
+)
+TEST2_ARTIFACT_PATH_FIELDS = (
+    "test2_rendered_path",
+    "test2_stdout_log_path",
+    "test2_stderr_log_path",
+)
 
 
 class ResultError(ValueError):
@@ -243,6 +253,11 @@ def validate_result_records(
                     f"{where}: '{field}' must be a non-negative integer"
                 )
 
+        for field in RESULT_ARTIFACT_PATH_FIELDS:
+            value = row.get(field)
+            if value:
+                _validate_relative_artifact_path(value, where=f"{where}:{field}")
+
         attempt_index = row.get("attempt_index")
         if (
             not isinstance(attempt_index, int)
@@ -271,6 +286,7 @@ def validate_result_records(
             raise ResultError(f"{where}: test2_pass requires test1_pass")
         if row["test2_pass"] and bucket != "pass":
             raise ResultError(f"{where}: test2_pass requires pass bucket")
+        _validate_artifact_path_stage(row, where=where)
 
         attempt_key = (
             row["run_id"],
@@ -286,6 +302,35 @@ def validate_result_records(
                 f"{where}: duplicate attempt row; first seen at {source}:{first_idx}"
             )
         seen_attempts[attempt_key] = idx
+
+
+def _validate_artifact_path_stage(row: dict[str, Any], *, where: str) -> None:
+    bucket = str(row["bucket"])
+    test1_paths = [field for field in TEST1_ARTIFACT_PATH_FIELDS if row.get(field)]
+    test2_paths = [field for field in TEST2_ARTIFACT_PATH_FIELDS if row.get(field)]
+
+    if bucket in {"provider_error", "output_parse_reject"}:
+        paths = test1_paths + test2_paths
+        if paths:
+            shown = ", ".join(paths)
+            raise ResultError(
+                f"{where}: {bucket} bucket cannot reference Lean artifacts: {shown}"
+            )
+
+    if test1_paths and len(test1_paths) != len(TEST1_ARTIFACT_PATH_FIELDS):
+        missing = sorted(set(TEST1_ARTIFACT_PATH_FIELDS) - set(test1_paths))
+        raise ResultError(
+            f"{where}: incomplete test1 artifact paths; missing {', '.join(missing)}"
+        )
+    if test2_paths and len(test2_paths) != len(TEST2_ARTIFACT_PATH_FIELDS):
+        missing = sorted(set(TEST2_ARTIFACT_PATH_FIELDS) - set(test2_paths))
+        raise ResultError(
+            f"{where}: incomplete test2 artifact paths; missing {', '.join(missing)}"
+        )
+    if test2_paths and not row["test1_pass"]:
+        raise ResultError(f"{where}: test2 artifact paths require test1_pass")
+    if test2_paths and not test1_paths:
+        raise ResultError(f"{where}: test2 artifact paths require test1 artifact paths")
 
 
 def _pass_at_k(records: list[dict[str, Any]], key_fields: tuple[str, ...]) -> dict[str, Any]:

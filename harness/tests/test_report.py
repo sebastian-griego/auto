@@ -104,6 +104,39 @@ def test_compute_summary_rejects_malformed_artifact_fields():
         compute_summary([bad_hash])
 
 
+def test_compute_summary_rejects_unsafe_artifact_paths():
+    bad_path = _record("a")
+    bad_path["test1_rendered_path"] = "../outside.lean"
+
+    with pytest.raises(ResultError, match="run directory"):
+        compute_summary([bad_path])
+
+
+def test_compute_summary_rejects_incomplete_artifact_path_groups():
+    partial_test1 = _record("a")
+    partial_test1["test1_rendered_path"] = "rendered/a.test1.lean"
+
+    with pytest.raises(ResultError, match="incomplete test1 artifact paths"):
+        compute_summary([partial_test1])
+
+    partial_test2 = _record("a", bucket="semantic_fail", test1_pass=True)
+    partial_test2["test1_rendered_path"] = "rendered/a.test1.lean"
+    partial_test2["test1_stdout_log_path"] = "logs/a.test1.stdout.log"
+    partial_test2["test1_stderr_log_path"] = "logs/a.test1.stderr.log"
+    partial_test2["test2_rendered_path"] = "rendered/a.test2.lean"
+
+    with pytest.raises(ResultError, match="incomplete test2 artifact paths"):
+        compute_summary([partial_test2])
+
+
+def test_compute_summary_rejects_prelean_bucket_artifact_paths():
+    prelean = _record("a", bucket="output_parse_reject")
+    prelean["test1_rendered_path"] = "rendered/a.test1.lean"
+
+    with pytest.raises(ResultError, match="cannot reference Lean artifacts"):
+        compute_summary([prelean])
+
+
 def test_load_results_jsonl_reports_line_numbers(tmp_path: Path):
     path = tmp_path / "results.jsonl"
     path.write_text(json.dumps(_record("a")) + "\n[]\n", encoding="utf-8")
@@ -356,7 +389,7 @@ def test_verify_manifest_rejects_missing_record_artifacts_by_default(
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     record = _record("a")
-    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    _add_test1_artifact_paths(record)
     records = [record]
     summary = compute_summary(records)
     (run_dir / "results.jsonl").write_text(
@@ -371,7 +404,11 @@ def test_verify_manifest_rejects_missing_record_artifacts_by_default(
         verify_manifest(run_dir)
 
     verified = verify_manifest(run_dir, allow_missing_record_artifacts=True)
-    assert verified["missing_record_artifacts"] == ["rendered/a.test1.lean"]
+    assert verified["missing_record_artifacts"] == [
+        "logs/a.test1.stderr.log",
+        "logs/a.test1.stdout.log",
+        "rendered/a.test1.lean",
+    ]
 
 
 def test_verify_manifest_rejects_unlisted_artifacts_by_default(tmp_path: Path):
@@ -424,13 +461,17 @@ def test_verify_manifest_rejects_unlisted_record_artifact_reference(
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     rendered = run_dir / "rendered"
+    logs = run_dir / "logs"
     rendered.mkdir()
+    logs.mkdir()
     record = _record("a")
-    record["test1_rendered_path"] = "rendered/a.test1.lean"
-    (run_dir / record["test1_rendered_path"]).write_text(
-        "theorem t : True := trivial\n",
-        encoding="utf-8",
-    )
+    _add_test1_artifact_paths(record)
+    for rel_path in (
+        record["test1_rendered_path"],
+        record["test1_stdout_log_path"],
+        record["test1_stderr_log_path"],
+    ):
+        (run_dir / rel_path).write_text(rel_path, encoding="utf-8")
     _write_run_bundle(run_dir, [record])
 
     manifest_path = run_dir / "manifest.json"
@@ -452,7 +493,7 @@ def test_verify_manifest_rejects_stale_missing_record_artifact(
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     record = _record("a")
-    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    _add_test1_artifact_paths(record)
     _write_run_bundle(run_dir, [record])
     rendered = run_dir / "rendered"
     rendered.mkdir()
@@ -495,16 +536,9 @@ def test_write_manifest_rejects_escaping_record_artifact_path(tmp_path: Path):
     record = _record("a")
     record["test1_rendered_path"] = "../outside.lean"
     records = [record]
-    summary = compute_summary(records)
-    (run_dir / "results.jsonl").write_text(
-        json.dumps(record, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    write_summary(run_dir / "summary.json", summary)
-    write_report(run_dir / "report.md", records, summary)
 
     with pytest.raises(ResultError, match="run directory"):
-        write_manifest(run_dir, records, summary)
+        compute_summary(records)
 
 
 def _write_run_bundle(run_dir: Path, records: list[dict]) -> dict:
@@ -538,6 +572,12 @@ def _refresh_manifest_artifact(run_dir: Path, rel_path: str) -> None:
             _write_manifest_json(manifest_path, manifest)
             return
     raise AssertionError(f"missing artifact entry: {rel_path}")
+
+
+def _add_test1_artifact_paths(record: dict) -> None:
+    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    record["test1_stdout_log_path"] = "logs/a.test1.stdout.log"
+    record["test1_stderr_log_path"] = "logs/a.test1.stderr.log"
 
 
 def _record(
