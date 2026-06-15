@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -182,6 +183,32 @@ def test_write_manifest_rejects_run_dir_mismatch(tmp_path: Path):
         write_manifest(run_dir, records, summary)
 
 
+def test_write_manifest_rejects_summary_total_attempt_mismatch(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    records = [_record("a")]
+    summary = compute_summary(records)
+    summary["total_attempts"] = 2
+
+    with pytest.raises(ResultError, match="does not match 1 result records"):
+        write_manifest(run_dir, records, summary)
+
+    assert not (run_dir / "manifest.json").exists()
+
+
+def test_write_manifest_rejects_non_integer_summary_total_attempts(
+    tmp_path: Path,
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    records = [_record("a")]
+    summary = compute_summary(records)
+    summary["total_attempts"] = True
+
+    with pytest.raises(ResultError, match="non-negative integer"):
+        write_manifest(run_dir, records, summary)
+
+
 def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -203,6 +230,38 @@ def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+    with pytest.raises(ResultError, match="does not match run directory"):
+        verify_manifest(run_dir)
+
+
+def test_verify_manifest_rejects_total_attempt_mismatch(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["total_attempts"] = 2
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="does not match 1 rows"):
+        verify_manifest(run_dir)
+
+
+def test_verify_manifest_rejects_results_run_scope_mismatch(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    _write_run_bundle(run_dir, [record])
+
+    bad_record = dict(record)
+    bad_record["run_id"] = "other"
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(bad_record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _refresh_manifest_artifact(run_dir, "results.jsonl")
 
     with pytest.raises(ResultError, match="does not match run directory"):
         verify_manifest(run_dir)
@@ -274,6 +333,57 @@ def test_verify_manifest_rejects_unlisted_artifacts_by_default(tmp_path: Path):
     assert verified["run_id"] == "run"
 
 
+def test_verify_manifest_rejects_unlisted_record_artifact_reference(
+    tmp_path: Path,
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    rendered = run_dir / "rendered"
+    rendered.mkdir()
+    record = _record("a")
+    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    (run_dir / record["test1_rendered_path"]).write_text(
+        "theorem t : True := trivial\n",
+        encoding="utf-8",
+    )
+    _write_run_bundle(run_dir, [record])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"] = [
+        entry
+        for entry in manifest["artifacts"]
+        if entry["path"] != "rendered/a.test1.lean"
+    ]
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="referenced record artifacts not listed"):
+        verify_manifest(run_dir, allow_extra_artifacts=True)
+
+
+def test_verify_manifest_rejects_stale_missing_record_artifact(
+    tmp_path: Path,
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    _write_run_bundle(run_dir, [record])
+    rendered = run_dir / "rendered"
+    rendered.mkdir()
+    (run_dir / record["test1_rendered_path"]).write_text(
+        "theorem t : True := trivial\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResultError, match="exist on disk but are not hashed"):
+        verify_manifest(
+            run_dir,
+            allow_missing_record_artifacts=True,
+            allow_extra_artifacts=True,
+        )
+
+
 def test_verify_manifest_rejects_nested_unlisted_manifest(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -310,6 +420,39 @@ def test_write_manifest_rejects_escaping_record_artifact_path(tmp_path: Path):
 
     with pytest.raises(ResultError, match="run directory"):
         write_manifest(run_dir, records, summary)
+
+
+def _write_run_bundle(run_dir: Path, records: list[dict]) -> dict:
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+    return summary
+
+
+def _write_manifest_json(manifest_path: Path, manifest: dict) -> None:
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _refresh_manifest_artifact(run_dir: Path, rel_path: str) -> None:
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    path = run_dir / rel_path
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    for entry in manifest["artifacts"]:
+        if entry["path"] == rel_path:
+            entry["bytes"] = path.stat().st_size
+            entry["sha256"] = digest
+            _write_manifest_json(manifest_path, manifest)
+            return
+    raise AssertionError(f"missing artifact entry: {rel_path}")
 
 
 def _record(

@@ -31,5 +31,7 @@ Notes:
   requires referenced rendered/log files to exist before the manifest is written.
 - `verify-manifest` is strict by default: it rejects modified, missing, or
   unlisted files in a run directory, and it fails when `manifest.json` records
-  missing rendered/log artifacts. Use `--allow-missing-record-artifacts` and
-  `--allow-extra-artifacts` only for older partial archives.
+  missing rendered/log artifacts. It reloads `results.jsonl` to validate row
+  shape, run ID scope, attempt counts, and referenced artifact accounting. Use
+  `--allow-missing-record-artifacts` and `--allow-extra-artifacts` only for
+  older partial archives.

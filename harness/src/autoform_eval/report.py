@@ -104,6 +104,26 @@ def _manifest_entry(run_dir: Path, rel_path: str) -> dict[str, Any]:
     }
 
 
+def _validate_total_attempts(value: Any, *, where: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ResultError(f"{where}: total_attempts must be a non-negative integer")
+    return value
+
+
+def _summary_total_attempts(
+    summary: dict[str, Any], records: list[dict[str, Any]]
+) -> int:
+    total_attempts = _validate_total_attempts(
+        summary.get("total_attempts", len(records)), where="summary"
+    )
+    if total_attempts != len(records):
+        raise ResultError(
+            f"summary: total_attempts {total_attempts} does not match "
+            f"{len(records)} result records"
+        )
+    return total_attempts
+
+
 def _record_artifact_paths(
     records: list[dict[str, Any]], *, source: str = "records"
 ) -> list[str]:
@@ -445,6 +465,7 @@ def write_manifest(
 ) -> dict[str, Any]:
     validate_result_records(records)
     run_id = validate_manifest_run_scope(run_dir, records)
+    total_attempts = _summary_total_attempts(summary, records)
 
     artifact_paths: set[str] = set()
     for rel_path in CORE_ARTIFACT_PATHS:
@@ -466,7 +487,7 @@ def write_manifest(
     manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "run_id": run_id,
-        "total_attempts": int(summary.get("total_attempts", len(records))),
+        "total_attempts": total_attempts,
         "artifacts": [
             _manifest_entry(run_dir, rel_path) for rel_path in sorted(artifact_paths)
         ],
@@ -530,6 +551,9 @@ def verify_manifest(
             f"{manifest_path}: run_id {manifest_run_id!r} does not match "
             f"run directory {run_dir.name!r}"
         )
+    total_attempts = _validate_total_attempts(
+        manifest.get("total_attempts"), where=str(manifest_path)
+    )
 
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -579,10 +603,66 @@ def verify_manifest(
         raise ResultError(
             f"{manifest_path}: missing_record_artifacts must be a list"
         )
+    missing_paths: list[str] = []
+    seen_missing_paths: set[str] = set()
     for idx, rel_path in enumerate(missing, 1):
-        _validate_relative_artifact_path(
+        normalized = _validate_relative_artifact_path(
             rel_path, where=f"{manifest_path}:missing_record_artifacts:{idx}"
         )
+        if normalized in seen_missing_paths:
+            raise ResultError(
+                f"{manifest_path}: duplicate missing record artifact '{normalized}'"
+            )
+        seen_missing_paths.add(normalized)
+        missing_paths.append(normalized)
+
+    if "results.jsonl" in seen_paths:
+        results_path = _path_in_run_dir(run_dir, "results.jsonl")
+        records = load_results_jsonl(results_path)
+        validate_manifest_run_scope(run_dir, records)
+        if total_attempts != len(records):
+            raise ResultError(
+                f"{manifest_path}: total_attempts {total_attempts} does not "
+                f"match {len(records)} rows in results.jsonl"
+            )
+
+        referenced_paths = set(
+            _record_artifact_paths(records, source=str(results_path))
+        )
+        missing_path_set = set(missing_paths)
+        unaccounted_paths = sorted(
+            referenced_paths - seen_paths - missing_path_set
+        )
+        if unaccounted_paths:
+            shown = ", ".join(unaccounted_paths[:5])
+            suffix = "" if len(unaccounted_paths) <= 5 else ", ..."
+            raise ResultError(
+                f"{manifest_path}: referenced record artifacts not listed "
+                f"in manifest: {shown}{suffix}"
+            )
+
+        extra_missing_paths = sorted(missing_path_set - referenced_paths)
+        if extra_missing_paths:
+            shown = ", ".join(extra_missing_paths[:5])
+            suffix = "" if len(extra_missing_paths) <= 5 else ", ..."
+            raise ResultError(
+                f"{manifest_path}: missing_record_artifacts not referenced "
+                f"by results.jsonl: {shown}{suffix}"
+            )
+
+        present_missing_paths = sorted(
+            rel_path
+            for rel_path in missing_path_set
+            if _path_in_run_dir(run_dir, rel_path).exists()
+        )
+        if present_missing_paths:
+            shown = ", ".join(present_missing_paths[:5])
+            suffix = "" if len(present_missing_paths) <= 5 else ", ..."
+            raise ResultError(
+                f"{manifest_path}: missing_record_artifacts exist on disk "
+                f"but are not hashed: {shown}{suffix}"
+            )
+
     if missing and not allow_missing_record_artifacts:
         shown = ", ".join(missing[:5])
         suffix = "" if len(missing) <= 5 else ", ..."
