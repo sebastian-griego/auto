@@ -57,8 +57,8 @@ python -m autoform_eval.cli verify-manifest --run-dir ../results/runs/<run_id>
 `verify-manifest` is strict by default: every non-manifest file under the run
 directory must be listed and hashed, and every rendered/log artifact referenced
 by `results.jsonl` must be accounted for. It also reloads `results.jsonl` to
-check row validity, run ID scope, the recorded attempt count, and
-`summary.json` consistency. Use
+check row validity, run ID scope, manifest metadata types, the recorded attempt
+count, and `summary.json` consistency. Use
 `--allow-missing-record-artifacts` or `--allow-extra-artifacts` only when
 auditing older partial artifacts.
 

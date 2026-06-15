@@ -550,9 +550,14 @@ def verify_manifest(
 
     if not isinstance(manifest, dict):
         raise ResultError(f"{manifest_path}: manifest must be a JSON object")
-    if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+    schema_version = manifest.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != MANIFEST_SCHEMA_VERSION
+    ):
         raise ResultError(
-            f"{manifest_path}: unsupported schema_version {manifest.get('schema_version')!r}"
+            f"{manifest_path}: unsupported schema_version {schema_version!r}"
         )
     manifest_run_id = manifest.get("run_id")
     if not isinstance(manifest_run_id, str) or not manifest_run_id:
@@ -587,6 +592,8 @@ def verify_manifest(
         path = _path_in_run_dir(run_dir, rel_path)
         if not path.exists():
             raise ResultError(f"{where}: missing artifact '{rel_path}'")
+        if not path.is_file():
+            raise ResultError(f"{where}: artifact is not a file '{rel_path}'")
 
         expected_bytes = entry.get("bytes")
         if (

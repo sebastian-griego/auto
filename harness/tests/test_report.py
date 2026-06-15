@@ -248,6 +248,20 @@ def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
         verify_manifest(run_dir)
 
 
+def test_verify_manifest_rejects_boolean_schema_version(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = True
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="unsupported schema_version"):
+        verify_manifest(run_dir)
+
+
 def test_verify_manifest_rejects_total_attempt_mismatch(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -362,6 +376,28 @@ def test_verify_manifest_rejects_unlisted_artifacts_by_default(tmp_path: Path):
 
     verified = verify_manifest(run_dir, allow_extra_artifacts=True)
     assert verified["run_id"] == "run"
+
+
+def test_verify_manifest_rejects_directory_artifact_entry(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+    directory = run_dir / "debug"
+    directory.mkdir()
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"].append(
+        {
+            "path": "debug",
+            "bytes": 0,
+            "sha256": "0" * 64,
+        }
+    )
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="artifact is not a file"):
+        verify_manifest(run_dir, allow_extra_artifacts=True)
 
 
 def test_verify_manifest_rejects_unlisted_record_artifact_reference(
