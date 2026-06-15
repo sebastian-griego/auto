@@ -204,6 +204,7 @@ def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
     assert b"\r\n" not in manifest_bytes
 
     paths = {entry["path"] for entry in manifest["artifacts"]}
+    assert manifest["artifact_count"] == len(manifest["artifacts"])
     assert {"results.jsonl", "summary.json", "report.md"}.issubset(paths)
     assert "rendered/a.test1.lean" in paths
     assert manifest["missing_record_artifacts"] == []
@@ -325,10 +326,40 @@ def test_verify_manifest_requires_core_run_artifact_entries(tmp_path: Path):
         for entry in manifest["artifacts"]
         if entry["path"] != "summary.json"
     ]
+    manifest["artifact_count"] = len(manifest["artifacts"])
     _write_manifest_json(manifest_path, manifest)
 
     with pytest.raises(ResultError, match="missing core run artifacts"):
         verify_manifest(run_dir, allow_extra_artifacts=True)
+
+
+def test_verify_manifest_rejects_non_integer_artifact_count(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for bad_count in (True, 1.0):
+        manifest["artifact_count"] = bad_count
+        _write_manifest_json(manifest_path, manifest)
+
+        with pytest.raises(ResultError, match="artifact_count"):
+            verify_manifest(run_dir)
+
+
+def test_verify_manifest_rejects_artifact_count_mismatch(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifact_count"] = len(manifest["artifacts"]) + 1
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="does not match"):
+        verify_manifest(run_dir)
 
 
 def test_verify_manifest_rejects_boolean_schema_version(tmp_path: Path):
@@ -481,6 +512,7 @@ def test_verify_manifest_rejects_directory_artifact_entry(tmp_path: Path):
             "sha256": "0" * 64,
         }
     )
+    manifest["artifact_count"] = len(manifest["artifacts"])
     _write_manifest_json(manifest_path, manifest)
 
     with pytest.raises(ResultError, match="artifact is not a file"):
@@ -513,6 +545,7 @@ def test_verify_manifest_rejects_unlisted_record_artifact_reference(
         for entry in manifest["artifacts"]
         if entry["path"] != "rendered/a.test1.lean"
     ]
+    manifest["artifact_count"] = len(manifest["artifacts"])
     _write_manifest_json(manifest_path, manifest)
 
     with pytest.raises(ResultError, match="referenced record artifacts not listed"):

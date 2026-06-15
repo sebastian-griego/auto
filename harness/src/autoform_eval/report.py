@@ -120,6 +120,16 @@ def _validate_total_attempts(value: Any, *, where: str) -> int:
     return value
 
 
+def _validate_artifact_count(value: Any, *, expected: int, where: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ResultError(f"{where}: artifact_count must be a non-negative integer")
+    if value != expected:
+        raise ResultError(
+            f"{where}: artifact_count {value} does not match {expected} artifacts"
+        )
+    return value
+
+
 def _summary_total_attempts(
     summary: dict[str, Any], records: list[dict[str, Any]]
 ) -> int:
@@ -565,6 +575,7 @@ def write_manifest(
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "run_id": run_id,
         "total_attempts": total_attempts,
+        "artifact_count": len(artifact_paths),
         "artifacts": [
             _manifest_entry(run_dir, rel_path) for rel_path in sorted(artifact_paths)
         ],
@@ -640,6 +651,11 @@ def verify_manifest(
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise ResultError(f"{manifest_path}: artifacts must be a non-empty list")
+    _validate_artifact_count(
+        manifest.get("artifact_count"),
+        expected=len(artifacts),
+        where=str(manifest_path),
+    )
 
     seen_paths: set[str] = set()
     for idx, entry in enumerate(artifacts, 1):
