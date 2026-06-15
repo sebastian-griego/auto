@@ -17,16 +17,42 @@ def _coerce_text(value: str | bytes | None) -> str:
     return value
 
 
+def _popen_kwargs(cmd: list[str], cwd: Path) -> dict:
+    kwargs = {
+        "args": cmd,
+        "cwd": str(cwd),
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if proc.poll() is None:
+            proc.kill()
+        return
+
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 def _run_cmd(cmd: list[str], cwd: Path, timeout_seconds: float) -> LeanRunResult:
     start = time.monotonic()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
+    proc = subprocess.Popen(**_popen_kwargs(cmd, cwd))
     try:
         stdout, stderr = proc.communicate(timeout=timeout_seconds)
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -40,10 +66,7 @@ def _run_cmd(cmd: list[str], cwd: Path, timeout_seconds: float) -> LeanRunResult
         )
     except subprocess.TimeoutExpired as exc:
         # Kill the whole session so child Lean processes do not outlive the timeout.
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _kill_process_tree(proc)
         stdout, stderr = proc.communicate()
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return LeanRunResult(

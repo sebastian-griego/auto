@@ -141,6 +141,12 @@ def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
         run_dir, records, summary, require_record_artifacts=True
     )
 
+    summary_bytes = (run_dir / "summary.json").read_bytes()
+    assert summary_bytes.endswith(b"\n")
+    assert b"\r\n" not in summary_bytes
+    report_bytes = (run_dir / "report.md").read_bytes()
+    assert report_bytes.endswith(b"\n")
+    assert b"\r\n" not in report_bytes
     manifest_bytes = (run_dir / "manifest.json").read_bytes()
     assert manifest_bytes.endswith(b"\n")
     assert b"\r\n" not in manifest_bytes

@@ -69,6 +69,18 @@ _TRANSIENT_PROVIDER_ERROR_HINTS = (
 )
 
 
+def _canonical_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _write_run_text(path: Path, text: str) -> None:
+    path.write_text(_canonical_text(text), encoding="utf-8", newline="\n")
+
+
+def _runner_exception_text(exc: Exception) -> str:
+    return f"runner_exception:{type(exc).__name__}:{exc}"
+
+
 def _read_mathlib_rev(lean_dir: Path) -> str:
     lakefile = lean_dir / "lakefile.lean"
     if not lakefile.exists():
@@ -314,7 +326,7 @@ def _run_attempt(
 
     t1_content = render_test1(lean_dir, item, candidate, hb1)
     t1_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.lean"
-    t1_path.write_text(t1_content, encoding="utf-8")
+    _write_run_text(t1_path, t1_content)
     t1_rendered_rel = t1_path.relative_to(run_dir).as_posix()
 
     lean_key1 = stable_hash(
@@ -340,23 +352,31 @@ def _run_attempt(
         t1_stderr = str(lean_cache1.get("stderr", ""))
         t1_timeout = bool(lean_cache1.get("timed_out", False))
     else:
-        t1_res = run_lean_file(lean_dir, t1_path, timeout1_s)
-        t1_ok = t1_res.ok
-        t1_elapsed = t1_res.elapsed_ms
-        t1_stdout = t1_res.stdout
-        t1_stderr = t1_res.stderr
-        t1_timeout = t1_res.timed_out
-        cache.set(
-            "lean",
-            lean_key1,
-            {
-                "ok": t1_ok,
-                "timed_out": t1_timeout,
-                "elapsed_ms": t1_elapsed,
-                "stdout": t1_stdout,
-                "stderr": t1_stderr,
-            },
-        )
+        try:
+            t1_res = run_lean_file(lean_dir, t1_path, timeout1_s)
+        except Exception as exc:  # noqa: BLE001
+            t1_ok = False
+            t1_elapsed = 0
+            t1_stdout = ""
+            t1_stderr = _runner_exception_text(exc)
+            t1_timeout = False
+        else:
+            t1_ok = t1_res.ok
+            t1_elapsed = t1_res.elapsed_ms
+            t1_stdout = t1_res.stdout
+            t1_stderr = t1_res.stderr
+            t1_timeout = t1_res.timed_out
+            cache.set(
+                "lean",
+                lean_key1,
+                {
+                    "ok": t1_ok,
+                    "timed_out": t1_timeout,
+                    "elapsed_ms": t1_elapsed,
+                    "stdout": t1_stdout,
+                    "stderr": t1_stderr,
+                },
+            )
 
     t1_stderr_path = (
         logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
@@ -364,8 +384,8 @@ def _run_attempt(
     t1_stdout_path = (
         logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
     )
-    t1_stderr_path.write_text(t1_stderr, encoding="utf-8")
-    t1_stdout_path.write_text(t1_stdout, encoding="utf-8")
+    _write_run_text(t1_stderr_path, t1_stderr)
+    _write_run_text(t1_stdout_path, t1_stdout)
     t1_stderr_rel = t1_stderr_path.relative_to(run_dir).as_posix()
     t1_stdout_rel = t1_stdout_path.relative_to(run_dir).as_posix()
 
@@ -397,7 +417,7 @@ def _run_attempt(
         lean_dir, item, candidate, hb2, prompt_version=prompt_version
     )
     t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
-    t2_path.write_text(t2_content, encoding="utf-8")
+    _write_run_text(t2_path, t2_content)
     t2_rendered_rel = t2_path.relative_to(run_dir).as_posix()
 
     lean_key2 = stable_hash(
@@ -423,23 +443,31 @@ def _run_attempt(
         t2_stderr = str(lean_cache2.get("stderr", ""))
         t2_timeout = bool(lean_cache2.get("timed_out", False))
     else:
-        t2_res = run_lean_file(lean_dir, t2_path, timeout2_s)
-        t2_ok = t2_res.ok
-        t2_elapsed = t2_res.elapsed_ms
-        t2_stdout = t2_res.stdout
-        t2_stderr = t2_res.stderr
-        t2_timeout = t2_res.timed_out
-        cache.set(
-            "lean",
-            lean_key2,
-            {
-                "ok": t2_ok,
-                "timed_out": t2_timeout,
-                "elapsed_ms": t2_elapsed,
-                "stdout": t2_stdout,
-                "stderr": t2_stderr,
-            },
-        )
+        try:
+            t2_res = run_lean_file(lean_dir, t2_path, timeout2_s)
+        except Exception as exc:  # noqa: BLE001
+            t2_ok = False
+            t2_elapsed = 0
+            t2_stdout = ""
+            t2_stderr = _runner_exception_text(exc)
+            t2_timeout = False
+        else:
+            t2_ok = t2_res.ok
+            t2_elapsed = t2_res.elapsed_ms
+            t2_stdout = t2_res.stdout
+            t2_stderr = t2_res.stderr
+            t2_timeout = t2_res.timed_out
+            cache.set(
+                "lean",
+                lean_key2,
+                {
+                    "ok": t2_ok,
+                    "timed_out": t2_timeout,
+                    "elapsed_ms": t2_elapsed,
+                    "stdout": t2_stdout,
+                    "stderr": t2_stderr,
+                },
+            )
 
     t2_stderr_path = (
         logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
@@ -447,8 +475,8 @@ def _run_attempt(
     t2_stdout_path = (
         logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
     )
-    t2_stderr_path.write_text(t2_stderr, encoding="utf-8")
-    t2_stdout_path.write_text(t2_stdout, encoding="utf-8")
+    _write_run_text(t2_stderr_path, t2_stderr)
+    _write_run_text(t2_stdout_path, t2_stdout)
     t2_stderr_rel = t2_stderr_path.relative_to(run_dir).as_posix()
     t2_stdout_rel = t2_stdout_path.relative_to(run_dir).as_posix()
 
@@ -611,7 +639,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "test1_elapsed_ms": 0,
                         "test2_elapsed_ms": 0,
                         "stdout_excerpt": "",
-                        "stderr_excerpt": f"runner_exception:{exc}",
+                        "stderr_excerpt": _runner_exception_text(exc),
                         "candidate_raw": "",
                         "candidate_hash": "",
                         "prompt_hash": "",
@@ -671,7 +699,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 records.append(record)
 
     results_path = run_dir / "results.jsonl"
-    with results_path.open("w", encoding="utf-8") as f:
+    with results_path.open("w", encoding="utf-8", newline="\n") as f:
         for row in records:
             f.write(json.dumps(row, sort_keys=True) + "\n")
 

@@ -351,7 +351,7 @@ def compute_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def write_summary(path: Path, summary: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_text(path, json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
 
 def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, Any]) -> None:
@@ -433,7 +433,7 @@ def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, A
             break
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_text(path, "\n".join(lines) + "\n")
 
 
 def write_manifest(
@@ -472,12 +472,12 @@ def write_manifest(
         "missing_record_artifacts": missing_record_artifacts,
     }
     manifest_path = run_dir / MANIFEST_NAME
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    _write_text(manifest_path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def verify_manifest(
