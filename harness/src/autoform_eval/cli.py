@@ -34,6 +34,8 @@ from .report import (
     ResultError,
     compute_summary,
     load_results_jsonl,
+    verify_manifest,
+    write_manifest,
     write_report,
     write_summary,
 )
@@ -313,7 +315,7 @@ def _run_attempt(
     t1_content = render_test1(lean_dir, item, candidate, hb1)
     t1_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.lean"
     t1_path.write_text(t1_content, encoding="utf-8")
-    t1_rendered_rel = str(t1_path.relative_to(run_dir))
+    t1_rendered_rel = t1_path.relative_to(run_dir).as_posix()
 
     lean_key1 = stable_hash(
         json.dumps(
@@ -364,8 +366,8 @@ def _run_attempt(
     )
     t1_stderr_path.write_text(t1_stderr, encoding="utf-8")
     t1_stdout_path.write_text(t1_stdout, encoding="utf-8")
-    t1_stderr_rel = str(t1_stderr_path.relative_to(run_dir))
-    t1_stdout_rel = str(t1_stdout_path.relative_to(run_dir))
+    t1_stderr_rel = t1_stderr_path.relative_to(run_dir).as_posix()
+    t1_stdout_rel = t1_stdout_path.relative_to(run_dir).as_posix()
 
     if not t1_ok:
         return {
@@ -396,7 +398,7 @@ def _run_attempt(
     )
     t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
     t2_path.write_text(t2_content, encoding="utf-8")
-    t2_rendered_rel = str(t2_path.relative_to(run_dir))
+    t2_rendered_rel = t2_path.relative_to(run_dir).as_posix()
 
     lean_key2 = stable_hash(
         json.dumps(
@@ -447,8 +449,8 @@ def _run_attempt(
     )
     t2_stderr_path.write_text(t2_stderr, encoding="utf-8")
     t2_stdout_path.write_text(t2_stdout, encoding="utf-8")
-    t2_stderr_rel = str(t2_stderr_path.relative_to(run_dir))
-    t2_stdout_rel = str(t2_stdout_path.relative_to(run_dir))
+    t2_stderr_rel = t2_stderr_path.relative_to(run_dir).as_posix()
+    t2_stdout_rel = t2_stdout_path.relative_to(run_dir).as_posix()
 
     bucket = "pass" if t2_ok else classify_failure(t2_stderr, t2_timeout, t2_stdout)
     t2_text = f"{t2_stderr}\n{t2_stdout}"
@@ -676,6 +678,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     summary = compute_summary(records)
     write_summary(run_dir / "summary.json", summary)
     write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary, require_record_artifacts=True)
 
     print(
         json.dumps(
@@ -694,14 +697,50 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     try:
         records = load_results_jsonl(results_path)
+        summary = compute_summary(records)
+        write_summary(run_dir / "summary.json", summary)
+        write_report(run_dir / "report.md", records, summary)
+        manifest = write_manifest(run_dir, records, summary)
     except ResultError as exc:
         print(f"result error: {exc}", file=sys.stderr)
         return 2
 
-    summary = compute_summary(records)
-    write_summary(run_dir / "summary.json", summary)
-    write_report(run_dir / "report.md", records, summary)
-    print(json.dumps({"run_dir": str(run_dir), "records": len(records)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "run_dir": str(run_dir),
+                "records": len(records),
+                "artifacts": len(manifest["artifacts"]),
+                "missing_record_artifacts": len(
+                    manifest.get("missing_record_artifacts", [])
+                ),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def cmd_verify_manifest(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    try:
+        manifest = verify_manifest(run_dir)
+    except ResultError as exc:
+        print(f"manifest error: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "run_dir": str(run_dir),
+                "artifacts": len(manifest["artifacts"]),
+                "missing_record_artifacts": len(
+                    manifest.get("missing_record_artifacts", [])
+                ),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -883,6 +922,10 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report")
     report.add_argument("--run-dir", required=True)
     report.set_defaults(func=cmd_report)
+
+    verify_manifest_parser = sub.add_parser("verify-manifest")
+    verify_manifest_parser.add_argument("--run-dir", required=True)
+    verify_manifest_parser.set_defaults(func=cmd_verify_manifest)
 
     audit = sub.add_parser("audit")
     audit.add_argument("--dataset-dir", default=str(default_dataset_dir()))

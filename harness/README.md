@@ -10,6 +10,7 @@ Key subcommands:
 - `validate`: dataset schema/static checks plus optional Lean self-checks
 - `run`: model evaluation run with artifacts
 - `report`: rebuild summary/report from `results.jsonl`
+- `verify-manifest`: verify hashes in a generated `manifest.json`
 
 Useful options:
 - `run --k <N>` for Pass@k attempts per item/model.
@@ -25,3 +26,6 @@ Notes:
 - `report` validates saved `results.jsonl` artifacts and rejects malformed buckets,
   non-boolean pass flags, impossible pass-state combinations, invalid attempt
   indexes, malformed optional artifact fields, and duplicate attempt rows.
+- `run` and `report` write `manifest.json` with SHA-256 hashes for core run
+  artifacts and any referenced rendered/log files that are present. `run`
+  requires referenced rendered/log files to exist before the manifest is written.

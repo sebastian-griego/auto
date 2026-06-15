@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter, defaultdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, get_args
 
 from .types import Bucket
 
 
+MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_NAME = "manifest.json"
+CORE_ARTIFACT_PATHS = ("results.jsonl", "summary.json", "report.md")
 VALID_BUCKETS = set(get_args(Bucket))
 REQUIRED_STR_FIELDS = (
     "run_id",
@@ -44,10 +48,77 @@ OPTIONAL_NONNEGATIVE_INT_FIELDS = (
     "test1_heartbeats",
     "test2_heartbeats",
 )
+RESULT_ARTIFACT_PATH_FIELDS = (
+    "test1_rendered_path",
+    "test2_rendered_path",
+    "test1_stdout_log_path",
+    "test1_stderr_log_path",
+    "test2_stdout_log_path",
+    "test2_stderr_log_path",
+)
 
 
 class ResultError(ValueError):
     pass
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_relative_artifact_path(value: str, *, where: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ResultError(f"{where}: artifact path must be a non-empty string")
+    if "\\" in value:
+        raise ResultError(
+            f"{where}: artifact path '{value}' must use forward slashes"
+        )
+    rel = PurePosixPath(value)
+    if rel.is_absolute():
+        raise ResultError(f"{where}: artifact path '{value}' must be relative")
+    normalized = rel.as_posix()
+    if normalized != value:
+        raise ResultError(f"{where}: artifact path '{value}' must be normalized")
+    if any(part in {"", ".", ".."} or ":" in part for part in rel.parts):
+        raise ResultError(
+            f"{where}: artifact path '{value}' must stay inside the run directory"
+        )
+    return normalized
+
+
+def _path_in_run_dir(run_dir: Path, rel_path: str) -> Path:
+    rel = PurePosixPath(rel_path)
+    return run_dir.joinpath(*rel.parts)
+
+
+def _manifest_entry(run_dir: Path, rel_path: str) -> dict[str, Any]:
+    path = _path_in_run_dir(run_dir, rel_path)
+    return {
+        "path": rel_path,
+        "bytes": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+
+
+def _record_artifact_paths(
+    records: list[dict[str, Any]], *, source: str = "records"
+) -> list[str]:
+    paths: set[str] = set()
+    for idx, row in enumerate(records, 1):
+        for field in RESULT_ARTIFACT_PATH_FIELDS:
+            value = row.get(field)
+            if not value:
+                continue
+            paths.add(
+                _validate_relative_artifact_path(
+                    value, where=f"{source}:{idx}:{field}"
+                )
+            )
+    return sorted(paths)
 
 
 def _rate(num: int, den: int) -> float:
@@ -347,3 +418,131 @@ def write_report(path: Path, records: list[dict[str, Any]], summary: dict[str, A
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_manifest(
+    run_dir: Path,
+    records: list[dict[str, Any]],
+    summary: dict[str, Any],
+    *,
+    require_record_artifacts: bool = False,
+) -> dict[str, Any]:
+    validate_result_records(records)
+
+    artifact_paths: set[str] = set()
+    for rel_path in CORE_ARTIFACT_PATHS:
+        if _path_in_run_dir(run_dir, rel_path).exists():
+            artifact_paths.add(rel_path)
+
+    missing_record_artifacts: list[str] = []
+    for rel_path in _record_artifact_paths(records):
+        if _path_in_run_dir(run_dir, rel_path).exists():
+            artifact_paths.add(rel_path)
+        else:
+            missing_record_artifacts.append(rel_path)
+
+    if missing_record_artifacts and require_record_artifacts:
+        missing = ", ".join(missing_record_artifacts[:5])
+        extra = "" if len(missing_record_artifacts) <= 5 else ", ..."
+        raise ResultError(f"missing referenced run artifacts: {missing}{extra}")
+
+    manifest = {
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "run_id": _manifest_run_id(records),
+        "total_attempts": int(summary.get("total_attempts", len(records))),
+        "artifacts": [
+            _manifest_entry(run_dir, rel_path) for rel_path in sorted(artifact_paths)
+        ],
+        "missing_record_artifacts": missing_record_artifacts,
+    }
+    manifest_path = run_dir / MANIFEST_NAME
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def verify_manifest(run_dir: Path) -> dict[str, Any]:
+    manifest_path = run_dir / MANIFEST_NAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError as exc:
+        raise ResultError(f"missing {manifest_path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ResultError(f"{manifest_path}: invalid JSON: {exc}") from exc
+
+    if not isinstance(manifest, dict):
+        raise ResultError(f"{manifest_path}: manifest must be a JSON object")
+    if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        raise ResultError(
+            f"{manifest_path}: unsupported schema_version {manifest.get('schema_version')!r}"
+        )
+
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise ResultError(f"{manifest_path}: artifacts must be a non-empty list")
+
+    seen_paths: set[str] = set()
+    for idx, entry in enumerate(artifacts, 1):
+        where = f"{manifest_path}:artifacts:{idx}"
+        if not isinstance(entry, dict):
+            raise ResultError(f"{where}: artifact entry must be an object")
+        rel_path = _validate_relative_artifact_path(
+            entry.get("path", ""), where=where
+        )
+        if rel_path == MANIFEST_NAME:
+            raise ResultError(f"{where}: manifest cannot hash itself")
+        if rel_path in seen_paths:
+            raise ResultError(f"{where}: duplicate artifact path '{rel_path}'")
+        seen_paths.add(rel_path)
+
+        path = _path_in_run_dir(run_dir, rel_path)
+        if not path.exists():
+            raise ResultError(f"{where}: missing artifact '{rel_path}'")
+
+        expected_bytes = entry.get("bytes")
+        if (
+            not isinstance(expected_bytes, int)
+            or isinstance(expected_bytes, bool)
+            or expected_bytes < 0
+        ):
+            raise ResultError(f"{where}: bytes must be a non-negative integer")
+        actual_bytes = path.stat().st_size
+        if actual_bytes != expected_bytes:
+            raise ResultError(
+                f"{where}: byte size mismatch for '{rel_path}' "
+                f"(expected {expected_bytes}, got {actual_bytes})"
+            )
+
+        expected_hash = entry.get("sha256")
+        if not isinstance(expected_hash, str) or not _looks_like_sha256(expected_hash):
+            raise ResultError(f"{where}: sha256 must be a 64-character hex string")
+        actual_hash = _sha256_file(path)
+        if actual_hash != expected_hash:
+            raise ResultError(f"{where}: sha256 mismatch for '{rel_path}'")
+
+    missing = manifest.get("missing_record_artifacts", [])
+    if not isinstance(missing, list):
+        raise ResultError(
+            f"{manifest_path}: missing_record_artifacts must be a list"
+        )
+    for idx, rel_path in enumerate(missing, 1):
+        _validate_relative_artifact_path(
+            rel_path, where=f"{manifest_path}:missing_record_artifacts:{idx}"
+        )
+
+    return manifest
+
+
+def _manifest_run_id(records: list[dict[str, Any]]) -> str:
+    run_ids = sorted(
+        {str(row.get("run_id", "")) for row in records if row.get("run_id")}
+    )
+    return run_ids[0] if len(run_ids) == 1 else ""
+
+
+def _looks_like_sha256(value: str) -> bool:
+    if len(value) != 64:
+        return False
+    return all(char in "0123456789abcdef" for char in value.lower())

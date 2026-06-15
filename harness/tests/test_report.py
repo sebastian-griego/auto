@@ -5,7 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from autoform_eval.report import ResultError, compute_summary, load_results_jsonl
+from autoform_eval.report import (
+    ResultError,
+    compute_summary,
+    load_results_jsonl,
+    verify_manifest,
+    write_manifest,
+    write_report,
+    write_summary,
+)
 
 
 def test_compute_summary_excludes_provider_errors_from_rates():
@@ -92,6 +100,91 @@ def test_load_results_jsonl_accepts_utf8_bom(tmp_path: Path):
     records = load_results_jsonl(path)
 
     assert records[0]["item_id"] == "a"
+
+
+def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    rendered = run_dir / "rendered"
+    logs = run_dir / "logs"
+    rendered.mkdir()
+    logs.mkdir()
+
+    record = _record("a", bucket="pass", test1_pass=True, test2_pass=True)
+    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    record["test2_rendered_path"] = "rendered/a.test2.lean"
+    record["test1_stdout_log_path"] = "logs/a.test1.stdout.log"
+    record["test1_stderr_log_path"] = "logs/a.test1.stderr.log"
+    record["test2_stdout_log_path"] = "logs/a.test2.stdout.log"
+    record["test2_stderr_log_path"] = "logs/a.test2.stderr.log"
+
+    for rel_path in (
+        record["test1_rendered_path"],
+        record["test2_rendered_path"],
+        record["test1_stdout_log_path"],
+        record["test1_stderr_log_path"],
+        record["test2_stdout_log_path"],
+        record["test2_stderr_log_path"],
+    ):
+        (run_dir / rel_path).write_text(rel_path, encoding="utf-8")
+
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+
+    manifest = write_manifest(
+        run_dir, records, summary, require_record_artifacts=True
+    )
+
+    paths = {entry["path"] for entry in manifest["artifacts"]}
+    assert {"results.jsonl", "summary.json", "report.md"}.issubset(paths)
+    assert "rendered/a.test1.lean" in paths
+    assert manifest["missing_record_artifacts"] == []
+    verified = verify_manifest(run_dir)
+    assert verified["run_id"] == "run"
+
+
+def test_verify_manifest_detects_modified_artifact(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+
+    (run_dir / "report.md").write_text("tampered\n", encoding="utf-8")
+
+    with pytest.raises(ResultError, match="mismatch"):
+        verify_manifest(run_dir)
+
+
+def test_write_manifest_rejects_escaping_record_artifact_path(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    record["test1_rendered_path"] = "../outside.lean"
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+
+    with pytest.raises(ResultError, match="run directory"):
+        write_manifest(run_dir, records, summary)
 
 
 def _record(
