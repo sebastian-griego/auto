@@ -141,6 +141,10 @@ def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
         run_dir, records, summary, require_record_artifacts=True
     )
 
+    manifest_bytes = (run_dir / "manifest.json").read_bytes()
+    assert manifest_bytes.endswith(b"\n")
+    assert b"\r\n" not in manifest_bytes
+
     paths = {entry["path"] for entry in manifest["artifacts"]}
     assert {"results.jsonl", "summary.json", "report.md"}.issubset(paths)
     assert "rendered/a.test1.lean" in paths
