@@ -169,6 +169,72 @@ def test_verify_manifest_detects_modified_artifact(tmp_path: Path):
         verify_manifest(run_dir)
 
 
+def test_verify_manifest_rejects_missing_record_artifacts_by_default(
+    tmp_path: Path,
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    record["test1_rendered_path"] = "rendered/a.test1.lean"
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+
+    with pytest.raises(ResultError, match="missing referenced record artifacts"):
+        verify_manifest(run_dir)
+
+    verified = verify_manifest(run_dir, allow_missing_record_artifacts=True)
+    assert verified["missing_record_artifacts"] == ["rendered/a.test1.lean"]
+
+
+def test_verify_manifest_rejects_unlisted_artifacts_by_default(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+    (run_dir / "debug.txt").write_text("not captured\n", encoding="utf-8")
+
+    with pytest.raises(ResultError, match="unexpected artifacts not in manifest"):
+        verify_manifest(run_dir)
+
+    verified = verify_manifest(run_dir, allow_extra_artifacts=True)
+    assert verified["run_id"] == "run"
+
+
+def test_verify_manifest_rejects_nested_unlisted_manifest(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = _record("a")
+    records = [record]
+    summary = compute_summary(records)
+    (run_dir / "results.jsonl").write_text(
+        json.dumps(record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_summary(run_dir / "summary.json", summary)
+    write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary)
+    (run_dir / "nested").mkdir()
+    (run_dir / "nested" / "manifest.json").write_text("extra\n", encoding="utf-8")
+
+    with pytest.raises(ResultError, match="nested/manifest\\.json"):
+        verify_manifest(run_dir)
+
+
 def test_write_manifest_rejects_escaping_record_artifact_path(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()

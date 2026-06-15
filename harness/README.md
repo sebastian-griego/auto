@@ -29,3 +29,7 @@ Notes:
 - `run` and `report` write `manifest.json` with SHA-256 hashes for core run
   artifacts and any referenced rendered/log files that are present. `run`
   requires referenced rendered/log files to exist before the manifest is written.
+- `verify-manifest` is strict by default: it rejects modified, missing, or
+  unlisted files in a run directory, and it fails when `manifest.json` records
+  missing rendered/log artifacts. Use `--allow-missing-record-artifacts` and
+  `--allow-extra-artifacts` only for older partial archives.

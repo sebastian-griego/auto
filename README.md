@@ -54,6 +54,12 @@ python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 python -m autoform_eval.cli verify-manifest --run-dir ../results/runs/<run_id>
 ```
 
+`verify-manifest` is strict by default: every non-manifest file under the run
+directory must be listed and hashed, and every rendered/log artifact referenced
+by `results.jsonl` must be present. Use
+`--allow-missing-record-artifacts` or `--allow-extra-artifacts` only when
+auditing older partial artifacts.
+
 Run a fast dataset-wide benchmark health audit without Lean:
 ```bash
 cd harness

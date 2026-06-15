@@ -121,6 +121,22 @@ def _record_artifact_paths(
     return sorted(paths)
 
 
+def _run_artifact_paths(run_dir: Path) -> set[str]:
+    paths: set[str] = set()
+    for path in run_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        rel_path = path.relative_to(run_dir).as_posix()
+        if rel_path == MANIFEST_NAME:
+            continue
+        paths.add(
+            _validate_relative_artifact_path(
+                rel_path, where=f"{run_dir}:artifact"
+            )
+        )
+    return paths
+
+
 def _rate(num: int, den: int) -> float:
     return 0.0 if den == 0 else num / den
 
@@ -463,7 +479,12 @@ def write_manifest(
     return manifest
 
 
-def verify_manifest(run_dir: Path) -> dict[str, Any]:
+def verify_manifest(
+    run_dir: Path,
+    *,
+    allow_missing_record_artifacts: bool = False,
+    allow_extra_artifacts: bool = False,
+) -> dict[str, Any]:
     manifest_path = run_dir / MANIFEST_NAME
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
@@ -531,6 +552,22 @@ def verify_manifest(run_dir: Path) -> dict[str, Any]:
         _validate_relative_artifact_path(
             rel_path, where=f"{manifest_path}:missing_record_artifacts:{idx}"
         )
+    if missing and not allow_missing_record_artifacts:
+        shown = ", ".join(missing[:5])
+        suffix = "" if len(missing) <= 5 else ", ..."
+        raise ResultError(
+            f"{manifest_path}: missing referenced record artifacts: {shown}{suffix}"
+        )
+
+    if not allow_extra_artifacts:
+        extra_paths = sorted(_run_artifact_paths(run_dir) - seen_paths)
+        if extra_paths:
+            shown = ", ".join(extra_paths[:5])
+            suffix = "" if len(extra_paths) <= 5 else ", ..."
+            raise ResultError(
+                f"{manifest_path}: unexpected artifacts not in manifest: "
+                f"{shown}{suffix}"
+            )
 
     return manifest
 

@@ -724,7 +724,11 @@ def cmd_report(args: argparse.Namespace) -> int:
 def cmd_verify_manifest(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir)
     try:
-        manifest = verify_manifest(run_dir)
+        manifest = verify_manifest(
+            run_dir,
+            allow_missing_record_artifacts=args.allow_missing_record_artifacts,
+            allow_extra_artifacts=args.allow_extra_artifacts,
+        )
     except ResultError as exc:
         print(f"manifest error: {exc}", file=sys.stderr)
         return 1
@@ -925,6 +929,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_manifest_parser = sub.add_parser("verify-manifest")
     verify_manifest_parser.add_argument("--run-dir", required=True)
+    verify_manifest_parser.add_argument(
+        "--allow-missing-record-artifacts",
+        action="store_true",
+        help=(
+            "Allow manifests produced from partial archived results where "
+            "referenced rendered/log artifacts are absent."
+        ),
+    )
+    verify_manifest_parser.add_argument(
+        "--allow-extra-artifacts",
+        action="store_true",
+        help="Allow files in the run directory that are not listed in the manifest.",
+    )
     verify_manifest_parser.set_defaults(func=cmd_verify_manifest)
 
     audit = sub.add_parser("audit")
