@@ -3,7 +3,27 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
+
+from .types import Bucket
+
+
+VALID_BUCKETS = set(get_args(Bucket))
+REQUIRED_STR_FIELDS = (
+    "run_id",
+    "item_id",
+    "split",
+    "family",
+    "tier",
+    "provider",
+    "model",
+    "bucket",
+)
+REQUIRED_BOOL_FIELDS = ("test1_pass", "test2_pass")
+
+
+class ResultError(ValueError):
+    pass
 
 
 def _rate(num: int, den: int) -> float:
@@ -20,6 +40,86 @@ def _as_attempt_index(value: Any) -> int:
 
 def _is_provider_error(row: dict[str, Any]) -> bool:
     return str(row.get("bucket", "")) == "provider_error"
+
+
+def load_results_jsonl(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8-sig") as f:
+        for line_no, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ResultError(f"{path}:{line_no}: invalid JSON: {exc}") from exc
+            if not isinstance(row, dict):
+                raise ResultError(f"{path}:{line_no}: each row must be a JSON object")
+            records.append(row)
+    validate_result_records(records, source=str(path))
+    return records
+
+
+def validate_result_records(
+    records: list[dict[str, Any]], *, source: str = "records"
+) -> None:
+    seen_attempts: dict[tuple[str, str, str, str, str, str, int], int] = {}
+    for idx, row in enumerate(records, 1):
+        where = f"{source}:{idx}"
+        for field in REQUIRED_STR_FIELDS:
+            value = row.get(field)
+            if not isinstance(value, str) or not value:
+                raise ResultError(f"{where}: '{field}' must be a non-empty string")
+
+        bucket = row["bucket"]
+        if bucket not in VALID_BUCKETS:
+            valid = ", ".join(sorted(VALID_BUCKETS))
+            raise ResultError(
+                f"{where}: unsupported bucket '{bucket}' (valid: {valid})"
+            )
+
+        for field in REQUIRED_BOOL_FIELDS:
+            if not isinstance(row.get(field), bool):
+                raise ResultError(f"{where}: '{field}' must be a boolean")
+
+        if (
+            "shape_pass" in row
+            and row["shape_pass"] is not None
+            and not isinstance(row["shape_pass"], bool)
+        ):
+            raise ResultError(f"{where}: 'shape_pass' must be a boolean or null")
+
+        attempt_index = row.get("attempt_index")
+        if (
+            not isinstance(attempt_index, int)
+            or isinstance(attempt_index, bool)
+            or attempt_index < 1
+        ):
+            raise ResultError(f"{where}: 'attempt_index' must be a positive integer")
+
+        if bucket == "pass" and not (row["test1_pass"] and row["test2_pass"]):
+            raise ResultError(
+                f"{where}: pass bucket requires test1_pass and test2_pass"
+            )
+        if bucket == "provider_error" and (row["test1_pass"] or row["test2_pass"]):
+            raise ResultError(
+                f"{where}: provider_error bucket cannot pass Lean checks"
+            )
+
+        attempt_key = (
+            row["run_id"],
+            row["provider"],
+            row["model"],
+            row["split"],
+            row["item_id"],
+            attempt_index,
+        )
+        if attempt_key in seen_attempts:
+            first_idx = seen_attempts[attempt_key]
+            raise ResultError(
+                f"{where}: duplicate attempt row; first seen at {source}:{first_idx}"
+            )
+        seen_attempts[attempt_key] = idx
 
 
 def _pass_at_k(records: list[dict[str, Any]], key_fields: tuple[str, ...]) -> dict[str, Any]:
@@ -59,6 +159,7 @@ def _combined_by_key(records: list[dict[str, Any]], field: str) -> dict[str, dic
 
 
 def compute_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    validate_result_records(records)
     total = len(records)
     evaluable_records = [r for r in records if not _is_provider_error(r)]
     evaluable_total = len(evaluable_records)

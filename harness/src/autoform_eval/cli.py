@@ -30,7 +30,13 @@ from .prompt import (
     is_supported_prompt_version,
 )
 from .render import render_test1, render_test2
-from .report import compute_summary, write_report, write_summary
+from .report import (
+    ResultError,
+    compute_summary,
+    load_results_jsonl,
+    write_report,
+    write_summary,
+)
 from .types import excerpt
 from .validate import validate_split
 
@@ -686,13 +692,11 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"missing {results_path}", file=sys.stderr)
         return 2
 
-    records: list[dict[str, Any]] = []
-    with results_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            records.append(json.loads(line))
+    try:
+        records = load_results_jsonl(results_path)
+    except ResultError as exc:
+        print(f"result error: {exc}", file=sys.stderr)
+        return 2
 
     summary = compute_summary(records)
     write_summary(run_dir / "summary.json", summary)

@@ -22,3 +22,5 @@ Notes:
 - Provider/API failures are tracked as `provider_error` buckets.
 - Transient provider errors are retried and are not cached as sticky failures.
 - Summary rates are computed on evaluable attempts (provider errors excluded from denominators).
+- `report` validates saved `results.jsonl` artifacts and rejects malformed buckets,
+  non-boolean pass flags, invalid attempt indexes, and duplicate attempt rows.
