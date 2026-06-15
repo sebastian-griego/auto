@@ -32,6 +32,6 @@ Notes:
 - `verify-manifest` is strict by default: it rejects modified, missing, or
   unlisted files in a run directory, and it fails when `manifest.json` records
   missing rendered/log artifacts. It reloads `results.jsonl` to validate row
-  shape, run ID scope, attempt counts, and referenced artifact accounting. Use
-  `--allow-missing-record-artifacts` and `--allow-extra-artifacts` only for
-  older partial archives.
+  shape, run ID scope, attempt counts, `summary.json` consistency, and
+  referenced artifact accounting. Use `--allow-missing-record-artifacts` and
+  `--allow-extra-artifacts` only for older partial archives.

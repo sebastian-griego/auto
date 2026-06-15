@@ -209,6 +209,19 @@ def test_write_manifest_rejects_non_integer_summary_total_attempts(
         write_manifest(run_dir, records, summary)
 
 
+def test_write_manifest_rejects_stale_summary_metrics(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    records = [_record("a")]
+    summary = compute_summary(records)
+    summary["combined_rate"] = 1.0
+
+    with pytest.raises(ResultError, match="summary does not match"):
+        write_manifest(run_dir, records, summary)
+
+    assert not (run_dir / "manifest.json").exists()
+
+
 def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -246,6 +259,24 @@ def test_verify_manifest_rejects_total_attempt_mismatch(tmp_path: Path):
     _write_manifest_json(manifest_path, manifest)
 
     with pytest.raises(ResultError, match="does not match 1 rows"):
+        verify_manifest(run_dir)
+
+
+def test_verify_manifest_rejects_stale_summary_with_valid_hash(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    summary_path = run_dir / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["combined_rate"] = 1.0
+    summary_path.write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _refresh_manifest_artifact(run_dir, "summary.json")
+
+    with pytest.raises(ResultError, match="summary does not match"):
         verify_manifest(run_dir)
 
 

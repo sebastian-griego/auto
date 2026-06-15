@@ -124,6 +124,16 @@ def _summary_total_attempts(
     return total_attempts
 
 
+def _validate_summary_matches_records(
+    summary: Any, records: list[dict[str, Any]], *, where: str
+) -> None:
+    if not isinstance(summary, dict):
+        raise ResultError(f"{where}: summary must be a JSON object")
+    expected = compute_summary(records)
+    if summary != expected:
+        raise ResultError(f"{where}: summary does not match results.jsonl")
+
+
 def _record_artifact_paths(
     records: list[dict[str, Any]], *, source: str = "records"
 ) -> list[str]:
@@ -466,6 +476,7 @@ def write_manifest(
     validate_result_records(records)
     run_id = validate_manifest_run_scope(run_dir, records)
     total_attempts = _summary_total_attempts(summary, records)
+    _validate_summary_matches_records(summary, records, where="summary")
 
     artifact_paths: set[str] = set()
     for rel_path in CORE_ARTIFACT_PATHS:
@@ -624,6 +635,17 @@ def verify_manifest(
             raise ResultError(
                 f"{manifest_path}: total_attempts {total_attempts} does not "
                 f"match {len(records)} rows in results.jsonl"
+            )
+        if "summary.json" in seen_paths:
+            summary_path = _path_in_run_dir(run_dir, "summary.json")
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError as exc:
+                raise ResultError(f"{summary_path}: invalid JSON: {exc}") from exc
+            _validate_summary_matches_records(
+                summary,
+                records,
+                where=str(summary_path),
             )
 
         referenced_paths = set(
