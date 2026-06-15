@@ -9,7 +9,13 @@ from autoform_eval.cli import (
     _write_run_text,
     main,
 )
-from autoform_eval.types import DatasetItem, ProvenanceSpec, SemanticSpec
+from autoform_eval.validate import _self_check
+from autoform_eval.types import (
+    DatasetItem,
+    LeanRunResult,
+    ProvenanceSpec,
+    SemanticSpec,
+)
 
 
 def test_write_run_text_canonicalizes_newlines(tmp_path: Path):
@@ -155,6 +161,96 @@ def test_run_attempt_records_test1_runner_exception_artifacts(
         run_dir / attempt["test1_stderr_log_path"]
     ).read_text(encoding="utf-8") == "runner_exception:RuntimeError:lean unavailable"
     assert (run_dir / attempt["test1_stdout_log_path"]).read_bytes() == b""
+
+
+def test_run_attempt_uses_safe_artifact_names_for_unsafe_identifiers(
+    monkeypatch, tmp_path: Path
+):
+    lean_dir = tmp_path / "lean"
+    _write_templates(lean_dir)
+    run_dir = tmp_path / "run"
+    item = _dataset_item()
+    item.id = "../unit item"
+
+    def fail_runner(*_args, **_kwargs):
+        raise RuntimeError("lean unavailable")
+
+    monkeypatch.setattr("autoform_eval.cli.run_lean_file", fail_runner)
+
+    attempt = _run_attempt(
+        item=item,
+        provider="openai/v1",
+        model="mock:model/name",
+        params={"temperature": 0.0, "max_output_tokens": 64},
+        k_index=1,
+        lean_dir=lean_dir,
+        run_dir=run_dir,
+        cache=JsonCache(tmp_path / "cache"),
+        timeout1_s=1.0,
+        timeout2_s=1.0,
+        hb1=1000,
+        hb2=1000,
+        mock=True,
+        save_prompt_text=False,
+        prompt_version="v1.1.0",
+        provider_retries=0,
+        provider_retry_backoff_s=0.0,
+    )
+
+    rel_paths = [
+        attempt["test1_rendered_path"],
+        attempt["test1_stdout_log_path"],
+        attempt["test1_stderr_log_path"],
+    ]
+    assert all(path.startswith(("rendered/", "logs/")) for path in rel_paths)
+    assert all(
+        "../" not in path and "\\" not in path and ":" not in path
+        for path in rel_paths
+    )
+    assert all((run_dir / path).is_file() for path in rel_paths)
+
+
+def test_validate_self_check_uses_safe_rendered_names(monkeypatch, tmp_path: Path):
+    lean_dir = tmp_path / "lean"
+    _write_templates(lean_dir)
+    work_dir = tmp_path / "rendered"
+    item = _dataset_item()
+    item.id = "../unit item"
+
+    def pass_runner(*_args, **_kwargs):
+        return LeanRunResult(
+            ok=True,
+            timed_out=False,
+            returncode=0,
+            elapsed_ms=1,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr("autoform_eval.validate.run_lean_file", pass_runner)
+
+    ok, reasons, timings = _self_check(
+        item,
+        lean_dir=lean_dir,
+        work_dir=work_dir,
+        test1_heartbeats=1000,
+        test2_heartbeats=1000,
+        timeout1_s=1.0,
+        timeout2_s=1.0,
+        prompt_version="v1.1.0",
+    )
+
+    assert ok
+    assert reasons == []
+    assert timings == {"self_test1_elapsed_ms": 1, "self_test2_elapsed_ms": 1}
+    rendered_paths = sorted(
+        path.relative_to(work_dir).as_posix() for path in work_dir.iterdir()
+    )
+    assert len(rendered_paths) == 2
+    assert all(
+        "/" not in path and "\\" not in path and ":" not in path
+        for path in rendered_paths
+    )
 
 
 def test_report_rejects_run_id_mismatch_before_writing_artifacts(tmp_path: Path):

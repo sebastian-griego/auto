@@ -31,7 +31,9 @@ Notes:
   artifacts and any referenced rendered/log files that are present. New
   schema-v2 manifests record an `artifact_count`; legacy schema-v1 manifests
   without that count remain verifiable. `run` requires referenced rendered/log
-  files to exist before the manifest is written.
+  files to exist before the manifest is written. Artifact filenames are
+  normalized from item/provider/model identifiers while the original identifiers
+  remain unchanged in `results.jsonl`.
 - `verify-manifest` is strict by default: it rejects modified, missing, or
   unlisted files in a run directory, and it fails when `manifest.json` records
   missing rendered/log artifacts. It reloads `results.jsonl` to validate row

@@ -29,6 +29,9 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
   accepts legacy schema-v1 manifests that predate that count.
 - Prompt construction is versioned (`--prompt-version`, default `v1.1.0`) and recorded in run artifacts.
 - For frozen v1 reproduction, pass `--prompt-version v1.0.0`.
+- Rendered/log artifact filenames are normalized from item, provider, and model
+  identifiers so original IDs remain in JSON records without becoming filesystem
+  paths.
 
 ## Quickstart
 ```bash

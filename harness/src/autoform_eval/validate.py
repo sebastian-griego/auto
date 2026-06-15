@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .artifact_names import artifact_stem
 from .dataset import iter_all_splits, load_split
 from .linear_inequality import LinearInequalityParseError, parse_linear_inequality
 from .lean_runner import classify_failure, run_lean_file
@@ -568,9 +569,10 @@ def _self_check(
 ) -> tuple[bool, list[str], dict[str, int]]:
     reasons: list[str] = []
     timings: dict[str, int] = {}
+    item_stem = artifact_stem(item.id)
 
     t1_content = render_test1(lean_dir, item, item.expected, test1_heartbeats)
-    t1_path = work_dir / f"{item.id}.self.test1.lean"
+    t1_path = work_dir / f"{item_stem}.self.test1.lean"
     _write_rendered(t1_path, t1_content)
     r1 = run_lean_file(lean_dir, t1_path, timeout1_s)
     timings["self_test1_elapsed_ms"] = r1.elapsed_ms
@@ -585,7 +587,7 @@ def _self_check(
         test2_heartbeats,
         prompt_version=prompt_version,
     )
-    t2_path = work_dir / f"{item.id}.self.test2.lean"
+    t2_path = work_dir / f"{item_stem}.self.test2.lean"
     _write_rendered(t2_path, t2_content)
     r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
     timings["self_test2_elapsed_ms"] = r2.elapsed_ms
@@ -609,6 +611,7 @@ def _mutation_check(
     reasons: list[str] = []
     timings: dict[str, int] = {}
     mutants = generate_mutants(item)
+    item_stem = artifact_stem(item.id)
     if not mutants:
         reasons.append("mutation:none_generated")
         return False, reasons, timings
@@ -617,7 +620,7 @@ def _mutation_check(
     shape_or_semantic_rejects = 0
     for idx, cand in enumerate(mutants, 1):
         t1_content = render_test1(lean_dir, item, cand, test1_heartbeats)
-        t1_path = work_dir / f"{item.id}.mut{idx}.test1.lean"
+        t1_path = work_dir / f"{item_stem}.mut{idx}.test1.lean"
         _write_rendered(t1_path, t1_content)
         r1 = run_lean_file(lean_dir, t1_path, timeout1_s)
         timings[f"mut{idx}_test1_elapsed_ms"] = r1.elapsed_ms
@@ -632,7 +635,7 @@ def _mutation_check(
             test2_heartbeats,
             prompt_version=prompt_version,
         )
-        t2_path = work_dir / f"{item.id}.mut{idx}.test2.lean"
+        t2_path = work_dir / f"{item_stem}.mut{idx}.test2.lean"
         _write_rendered(t2_path, t2_content)
         r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
         timings[f"mut{idx}_test2_elapsed_ms"] = r2.elapsed_ms
@@ -666,6 +669,7 @@ def _determinism_check(
     timings: dict[str, int] = {}
     if repeats <= 1:
         return True, reasons, timings
+    item_stem = artifact_stem(item.id)
 
     outcomes: list[tuple[bool, str]] = []
     elapsed_values: list[int] = []
@@ -677,7 +681,7 @@ def _determinism_check(
             test2_heartbeats,
             prompt_version=prompt_version,
         )
-        t2_path = work_dir / f"{item.id}.det{idx}.test2.lean"
+        t2_path = work_dir / f"{item_stem}.det{idx}.test2.lean"
         _write_rendered(t2_path, t2_content)
         r2 = run_lean_file(lean_dir, t2_path, timeout2_s)
         timings[f"det{idx}_test2_elapsed_ms"] = r2.elapsed_ms

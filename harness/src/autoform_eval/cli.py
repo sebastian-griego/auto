@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import GeminiAdapter, OpenAIAdapter
+from .artifact_names import artifact_stem
 from .audit import audit_dataset, write_audit_json, write_audit_markdown
 from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
@@ -389,9 +390,10 @@ def _run_attempt(
     logs_dir = run_dir / "logs"
     rendered_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
+    attempt_stem = artifact_stem(item.id, provider, model, f"k{k_index}")
 
     t1_content = render_test1(lean_dir, item, candidate, hb1)
-    t1_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.lean"
+    t1_path = rendered_dir / f"{attempt_stem}.test1.lean"
     _write_run_text(t1_path, t1_content)
     t1_rendered_rel = t1_path.relative_to(run_dir).as_posix()
 
@@ -445,10 +447,10 @@ def _run_attempt(
             )
 
     t1_stderr_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
+        logs_dir / f"{attempt_stem}.test1.stderr.log"
     )
     t1_stdout_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
+        logs_dir / f"{attempt_stem}.test1.stdout.log"
     )
     _write_run_text(t1_stderr_path, t1_stderr)
     _write_run_text(t1_stdout_path, t1_stdout)
@@ -482,7 +484,7 @@ def _run_attempt(
     t2_content = render_test2(
         lean_dir, item, candidate, hb2, prompt_version=prompt_version
     )
-    t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
+    t2_path = rendered_dir / f"{attempt_stem}.test2.lean"
     _write_run_text(t2_path, t2_content)
     t2_rendered_rel = t2_path.relative_to(run_dir).as_posix()
 
@@ -536,10 +538,10 @@ def _run_attempt(
             )
 
     t2_stderr_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
+        logs_dir / f"{attempt_stem}.test2.stderr.log"
     )
     t2_stdout_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
+        logs_dir / f"{attempt_stem}.test2.stdout.log"
     )
     _write_run_text(t2_stderr_path, t2_stderr)
     _write_run_text(t2_stdout_path, t2_stdout)
