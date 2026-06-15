@@ -35,7 +35,7 @@ def test_compute_summary_excludes_provider_errors_from_rates():
 def test_compute_summary_rejects_duplicate_attempt_rows():
     records = [
         _record("a", bucket="pass", test1_pass=True, test2_pass=True),
-        _record("a", bucket="semantic_fail"),
+        _record("a"),
     ]
 
     with pytest.raises(ResultError, match="duplicate attempt row"):
@@ -58,7 +58,7 @@ def test_compute_summary_rejects_invalid_result_fields():
 
 
 def test_compute_summary_rejects_impossible_pass_flags():
-    bad_order = _record("a", bucket="semantic_fail", test2_pass=True)
+    bad_order = _record("a", bucket="elab_fail", test2_pass=True)
     with pytest.raises(ResultError, match="test2_pass requires test1_pass"):
         compute_summary([bad_order])
 
@@ -67,6 +67,24 @@ def test_compute_summary_rejects_impossible_pass_flags():
     )
     with pytest.raises(ResultError, match="test2_pass requires pass bucket"):
         compute_summary([bad_bucket])
+
+
+def test_compute_summary_rejects_bucket_stage_mismatches():
+    bad_parse = _record("a", bucket="output_parse_reject", test1_pass=True)
+    with pytest.raises(ResultError, match="output_parse_reject bucket cannot pass"):
+        compute_summary([bad_parse])
+
+    bad_semantic = _record("a", bucket="semantic_fail", test1_pass=False)
+    with pytest.raises(ResultError, match="semantic_fail bucket requires test1_pass"):
+        compute_summary([bad_semantic])
+
+    bad_shape = _record("a", bucket="shape_fail", test1_pass=True)
+    with pytest.raises(ResultError, match="shape_fail bucket requires shape_pass false"):
+        compute_summary([bad_shape])
+
+    valid_shape = _record("a", bucket="shape_fail", test1_pass=True)
+    valid_shape["shape_pass"] = False
+    compute_summary([valid_shape])
 
 
 def test_compute_summary_rejects_malformed_artifact_fields():
@@ -525,7 +543,7 @@ def _refresh_manifest_artifact(run_dir: Path, rel_path: str) -> None:
 def _record(
     item_id: str,
     *,
-    bucket: str = "semantic_fail",
+    bucket: str = "elab_fail",
     test1_pass: bool = False,
     test2_pass: bool = False,
     attempt_index: int = 1,

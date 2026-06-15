@@ -255,14 +255,22 @@ def validate_result_records(
             raise ResultError(
                 f"{where}: pass bucket requires test1_pass and test2_pass"
             )
+        if bucket in {"provider_error", "output_parse_reject"} and (
+            row["test1_pass"] or row["test2_pass"]
+        ):
+            raise ResultError(
+                f"{where}: {bucket} bucket cannot pass Lean checks"
+            )
+        if bucket in {"shape_fail", "semantic_fail"} and not row["test1_pass"]:
+            raise ResultError(
+                f"{where}: {bucket} bucket requires test1_pass"
+            )
+        if bucket == "shape_fail" and row.get("shape_pass") is not False:
+            raise ResultError(f"{where}: shape_fail bucket requires shape_pass false")
         if row["test2_pass"] and not row["test1_pass"]:
             raise ResultError(f"{where}: test2_pass requires test1_pass")
         if row["test2_pass"] and bucket != "pass":
             raise ResultError(f"{where}: test2_pass requires pass bucket")
-        if bucket == "provider_error" and (row["test1_pass"] or row["test2_pass"]):
-            raise ResultError(
-                f"{where}: provider_error bucket cannot pass Lean checks"
-            )
 
         attempt_key = (
             row["run_id"],
