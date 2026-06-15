@@ -27,11 +27,29 @@ def _expect_str(d: dict[str, Any], key: str, where: str) -> str:
     return v
 
 
+def _expect_present_str(d: dict[str, Any], key: str, where: str) -> str:
+    if key not in d:
+        raise DatasetError(f"{where}: '{key}' must be a string")
+    v = d[key]
+    if not isinstance(v, str):
+        raise DatasetError(f"{where}: '{key}' must be a string")
+    return v
+
+
 def _expect_str_list(d: dict[str, Any], key: str, where: str) -> list[str]:
     v = d.get(key)
     if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
         raise DatasetError(f"{where}: '{key}' must be a list[string]")
     return list(v)
+
+
+def _expect_optional_str(d: dict[str, Any], key: str, where: str) -> str | None:
+    if key not in d or d[key] is None:
+        return None
+    v = d[key]
+    if not isinstance(v, str):
+        raise DatasetError(f"{where}: '{key}' must be a string when present")
+    return v
 
 
 def parse_item(raw: dict[str, Any], where: str) -> DatasetItem:
@@ -61,17 +79,21 @@ def parse_item(raw: dict[str, Any], where: str) -> DatasetItem:
     semantic = SemanticSpec(
         kind=kind,
         check=check,
-        extra=semantic_raw.get("extra") if isinstance(semantic_raw.get("extra"), str) else None,
+        extra=_expect_optional_str(semantic_raw, "extra", f"{where}.semantic"),
     )
     provenance = ProvenanceSpec(
         source_kind=source_kind,
         source_ref=_expect_str(provenance_raw, "source_ref", f"{where}.provenance"),
         license=_expect_str(provenance_raw, "license", f"{where}.provenance"),
-        notes=provenance_raw.get("notes") if isinstance(provenance_raw.get("notes"), str) else None,
+        notes=_expect_optional_str(
+            provenance_raw, "notes", f"{where}.provenance"
+        ),
     )
 
     forbidden_ok = raw.get("forbidden_ok", [])
-    if forbidden_ok and (not isinstance(forbidden_ok, list) or not all(isinstance(x, str) for x in forbidden_ok)):
+    if not isinstance(forbidden_ok, list) or not all(
+        isinstance(x, str) for x in forbidden_ok
+    ):
         raise DatasetError(f"{where}: 'forbidden_ok' must be list[string]")
 
     return DatasetItem(
@@ -80,7 +102,7 @@ def parse_item(raw: dict[str, Any], where: str) -> DatasetItem:
         id=_expect_str(raw, "id", where),
         nl=_expect_str(raw, "nl", where),
         imports=_expect_str_list(raw, "imports", where),
-        context=raw.get("context", "") if isinstance(raw.get("context", ""), str) else "",
+        context=_expect_present_str(raw, "context", where),
         expected=_expect_str(raw, "expected", where),
         family=_expect_str(raw, "family", where),
         tier=tier,
@@ -96,7 +118,8 @@ def load_jsonl(path: Path) -> list[DatasetItem]:
     if not path.exists():
         return []
     items: list[DatasetItem] = []
-    with path.open("r", encoding="utf-8") as f:
+    first_lines: dict[str, int] = {}
+    with path.open("r", encoding="utf-8-sig") as f:
         for idx, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -107,7 +130,14 @@ def load_jsonl(path: Path) -> list[DatasetItem]:
                 raise DatasetError(f"{path}:{idx}: invalid JSON: {exc}") from exc
             if not isinstance(raw, dict):
                 raise DatasetError(f"{path}:{idx}: each row must be a JSON object")
-            items.append(parse_item(raw, f"{path}:{idx}"))
+            item = parse_item(raw, f"{path}:{idx}")
+            if item.id in first_lines:
+                raise DatasetError(
+                    f"duplicate id {item.id!r} at {path}:{idx}; "
+                    f"first seen at line {first_lines[item.id]}"
+                )
+            first_lines[item.id] = idx
+            items.append(item)
     return items
 
 

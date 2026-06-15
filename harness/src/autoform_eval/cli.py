@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import GeminiAdapter, OpenAIAdapter
+from .artifact_names import artifact_stem
 from .audit import audit_dataset, write_audit_json, write_audit_markdown
 from .cache import JsonCache, stable_hash
 from .dataset import DatasetError, load_split
@@ -30,7 +31,16 @@ from .prompt import (
     is_supported_prompt_version,
 )
 from .render import render_test1, render_test2
-from .report import compute_summary, write_report, write_summary
+from .report import (
+    ResultError,
+    compute_summary,
+    load_results_jsonl,
+    validate_manifest_run_scope,
+    verify_manifest,
+    write_manifest,
+    write_report,
+    write_summary,
+)
 from .types import excerpt
 from .validate import validate_split
 
@@ -59,6 +69,20 @@ _TRANSIENT_PROVIDER_ERROR_HINTS = (
     "too many requests",
     "try again",
 )
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_AUTO_RUN_ID_COLLISIONS = 1000
+
+
+def _canonical_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _write_run_text(path: Path, text: str) -> None:
+    path.write_text(_canonical_text(text), encoding="utf-8", newline="\n")
+
+
+def _runner_exception_text(exc: Exception) -> str:
+    return f"runner_exception:{type(exc).__name__}:{exc}"
 
 
 def _read_mathlib_rev(lean_dir: Path) -> str:
@@ -76,6 +100,69 @@ def _read_mathlib_rev(lean_dir: Path) -> str:
 
 def _mk_run_id() -> str:
     return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+
+
+def _validate_run_id(run_id: str) -> str:
+    run_id = run_id.strip()
+    if not run_id:
+        raise ValueError("run_id must be non-empty")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise ValueError(
+            "run_id must start with a letter or digit and contain only "
+            "letters, digits, '.', '_', or '-'"
+        )
+    return run_id
+
+
+def _prepare_run_dir(results_root: Path, requested_run_id: str = "") -> tuple[str, Path]:
+    if requested_run_id:
+        run_id = _validate_run_id(requested_run_id)
+        results_root.mkdir(parents=True, exist_ok=True)
+        run_dir = results_root / run_id
+        try:
+            run_dir.mkdir()
+        except FileExistsError as exc:
+            raise ValueError(f"run_id already exists: {run_id}") from exc
+        return run_id, run_dir
+
+    results_root.mkdir(parents=True, exist_ok=True)
+    base_run_id = _validate_run_id(_mk_run_id())
+    for suffix in range(_MAX_AUTO_RUN_ID_COLLISIONS):
+        run_id = base_run_id if suffix == 0 else f"{base_run_id}_{suffix:02d}"
+        run_dir = results_root / run_id
+        try:
+            run_dir.mkdir()
+        except FileExistsError:
+            continue
+        return run_id, run_dir
+    raise ValueError(
+        f"could not allocate a unique run_id for timestamp {base_run_id}"
+    )
+
+
+def _parse_models(raw: str) -> list[tuple[str, str]]:
+    models: list[tuple[str, str]] = []
+    first_positions: dict[tuple[str, str], int] = {}
+    for position, token in enumerate(raw.split(","), 1):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" not in token:
+            raise ValueError(f"invalid model token {token!r}, expected provider:model")
+        provider, model = (part.strip() for part in token.split(":", 1))
+        if not provider or not model:
+            raise ValueError(f"invalid model token {token!r}, expected provider:model")
+        key = (provider.lower(), model)
+        if key in first_positions:
+            raise ValueError(
+                f"duplicate model token {provider}:{model} at position {position}; "
+                f"first seen at position {first_positions[key]}"
+            )
+        first_positions[key] = position
+        models.append((provider, model))
+    if not models:
+        raise ValueError("at least one model must be specified")
+    return models
 
 
 def _adapter_for(provider: str):
@@ -303,11 +390,12 @@ def _run_attempt(
     logs_dir = run_dir / "logs"
     rendered_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
+    attempt_stem = artifact_stem(item.id, provider, model, f"k{k_index}")
 
     t1_content = render_test1(lean_dir, item, candidate, hb1)
-    t1_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.lean"
-    t1_path.write_text(t1_content, encoding="utf-8")
-    t1_rendered_rel = str(t1_path.relative_to(run_dir))
+    t1_path = rendered_dir / f"{attempt_stem}.test1.lean"
+    _write_run_text(t1_path, t1_content)
+    t1_rendered_rel = t1_path.relative_to(run_dir).as_posix()
 
     lean_key1 = stable_hash(
         json.dumps(
@@ -332,34 +420,42 @@ def _run_attempt(
         t1_stderr = str(lean_cache1.get("stderr", ""))
         t1_timeout = bool(lean_cache1.get("timed_out", False))
     else:
-        t1_res = run_lean_file(lean_dir, t1_path, timeout1_s)
-        t1_ok = t1_res.ok
-        t1_elapsed = t1_res.elapsed_ms
-        t1_stdout = t1_res.stdout
-        t1_stderr = t1_res.stderr
-        t1_timeout = t1_res.timed_out
-        cache.set(
-            "lean",
-            lean_key1,
-            {
-                "ok": t1_ok,
-                "timed_out": t1_timeout,
-                "elapsed_ms": t1_elapsed,
-                "stdout": t1_stdout,
-                "stderr": t1_stderr,
-            },
-        )
+        try:
+            t1_res = run_lean_file(lean_dir, t1_path, timeout1_s)
+        except Exception as exc:  # noqa: BLE001
+            t1_ok = False
+            t1_elapsed = 0
+            t1_stdout = ""
+            t1_stderr = _runner_exception_text(exc)
+            t1_timeout = False
+        else:
+            t1_ok = t1_res.ok
+            t1_elapsed = t1_res.elapsed_ms
+            t1_stdout = t1_res.stdout
+            t1_stderr = t1_res.stderr
+            t1_timeout = t1_res.timed_out
+            cache.set(
+                "lean",
+                lean_key1,
+                {
+                    "ok": t1_ok,
+                    "timed_out": t1_timeout,
+                    "elapsed_ms": t1_elapsed,
+                    "stdout": t1_stdout,
+                    "stderr": t1_stderr,
+                },
+            )
 
     t1_stderr_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stderr.log"
+        logs_dir / f"{attempt_stem}.test1.stderr.log"
     )
     t1_stdout_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test1.stdout.log"
+        logs_dir / f"{attempt_stem}.test1.stdout.log"
     )
-    t1_stderr_path.write_text(t1_stderr, encoding="utf-8")
-    t1_stdout_path.write_text(t1_stdout, encoding="utf-8")
-    t1_stderr_rel = str(t1_stderr_path.relative_to(run_dir))
-    t1_stdout_rel = str(t1_stdout_path.relative_to(run_dir))
+    _write_run_text(t1_stderr_path, t1_stderr)
+    _write_run_text(t1_stdout_path, t1_stdout)
+    t1_stderr_rel = t1_stderr_path.relative_to(run_dir).as_posix()
+    t1_stdout_rel = t1_stdout_path.relative_to(run_dir).as_posix()
 
     if not t1_ok:
         return {
@@ -388,9 +484,9 @@ def _run_attempt(
     t2_content = render_test2(
         lean_dir, item, candidate, hb2, prompt_version=prompt_version
     )
-    t2_path = rendered_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.lean"
-    t2_path.write_text(t2_content, encoding="utf-8")
-    t2_rendered_rel = str(t2_path.relative_to(run_dir))
+    t2_path = rendered_dir / f"{attempt_stem}.test2.lean"
+    _write_run_text(t2_path, t2_content)
+    t2_rendered_rel = t2_path.relative_to(run_dir).as_posix()
 
     lean_key2 = stable_hash(
         json.dumps(
@@ -415,34 +511,42 @@ def _run_attempt(
         t2_stderr = str(lean_cache2.get("stderr", ""))
         t2_timeout = bool(lean_cache2.get("timed_out", False))
     else:
-        t2_res = run_lean_file(lean_dir, t2_path, timeout2_s)
-        t2_ok = t2_res.ok
-        t2_elapsed = t2_res.elapsed_ms
-        t2_stdout = t2_res.stdout
-        t2_stderr = t2_res.stderr
-        t2_timeout = t2_res.timed_out
-        cache.set(
-            "lean",
-            lean_key2,
-            {
-                "ok": t2_ok,
-                "timed_out": t2_timeout,
-                "elapsed_ms": t2_elapsed,
-                "stdout": t2_stdout,
-                "stderr": t2_stderr,
-            },
-        )
+        try:
+            t2_res = run_lean_file(lean_dir, t2_path, timeout2_s)
+        except Exception as exc:  # noqa: BLE001
+            t2_ok = False
+            t2_elapsed = 0
+            t2_stdout = ""
+            t2_stderr = _runner_exception_text(exc)
+            t2_timeout = False
+        else:
+            t2_ok = t2_res.ok
+            t2_elapsed = t2_res.elapsed_ms
+            t2_stdout = t2_res.stdout
+            t2_stderr = t2_res.stderr
+            t2_timeout = t2_res.timed_out
+            cache.set(
+                "lean",
+                lean_key2,
+                {
+                    "ok": t2_ok,
+                    "timed_out": t2_timeout,
+                    "elapsed_ms": t2_elapsed,
+                    "stdout": t2_stdout,
+                    "stderr": t2_stderr,
+                },
+            )
 
     t2_stderr_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stderr.log"
+        logs_dir / f"{attempt_stem}.test2.stderr.log"
     )
     t2_stdout_path = (
-        logs_dir / f"{item.id}.{provider}.{model}.k{k_index}.test2.stdout.log"
+        logs_dir / f"{attempt_stem}.test2.stdout.log"
     )
-    t2_stderr_path.write_text(t2_stderr, encoding="utf-8")
-    t2_stdout_path.write_text(t2_stdout, encoding="utf-8")
-    t2_stderr_rel = str(t2_stderr_path.relative_to(run_dir))
-    t2_stdout_rel = str(t2_stdout_path.relative_to(run_dir))
+    _write_run_text(t2_stderr_path, t2_stderr)
+    _write_run_text(t2_stdout_path, t2_stdout)
+    t2_stderr_rel = t2_stderr_path.relative_to(run_dir).as_posix()
+    t2_stdout_rel = t2_stdout_path.relative_to(run_dir).as_posix()
 
     bucket = "pass" if t2_ok else classify_failure(t2_stderr, t2_timeout, t2_stdout)
     t2_text = f"{t2_stderr}\n{t2_stdout}"
@@ -532,24 +636,28 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"dataset error: {exc}", file=sys.stderr)
         return 2
 
-    run_id = args.run_id or _mk_run_id()
-    run_dir = results_root / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    cache = JsonCache(cache_root)
+    try:
+        if args.k < 1:
+            raise ValueError("--k must be a positive integer")
+        models = _parse_models(args.models)
+    except ValueError as exc:
+        print(f"run error: {exc}", file=sys.stderr)
+        return 2
 
-    models: list[tuple[str, str]] = []
-    for token in args.models.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        if ":" not in token:
-            print(
-                f"invalid model token '{token}', expected provider:model",
-                file=sys.stderr,
-            )
-            return 2
-        provider, model = token.split(":", 1)
-        models.append((provider.strip(), model.strip()))
+    if not is_supported_prompt_version(args.prompt_version):
+        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
+        print(
+            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        run_id, run_dir = _prepare_run_dir(results_root, args.run_id)
+    except ValueError as exc:
+        print(f"run error: {exc}", file=sys.stderr)
+        return 2
+    cache = JsonCache(cache_root)
 
     records: list[dict[str, Any]] = []
     toolchain = (
@@ -560,13 +668,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
     if not mathlib_rev or mathlib_rev == "unknown":
         mathlib_rev = _read_mathlib_rev(lean_dir)
-    if not is_supported_prompt_version(args.prompt_version):
-        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
-        print(
-            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
-            file=sys.stderr,
-        )
-        return 2
 
     for item in items:
         for provider, model in models:
@@ -603,7 +704,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "test1_elapsed_ms": 0,
                         "test2_elapsed_ms": 0,
                         "stdout_excerpt": "",
-                        "stderr_excerpt": f"runner_exception:{exc}",
+                        "stderr_excerpt": _runner_exception_text(exc),
                         "candidate_raw": "",
                         "candidate_hash": "",
                         "prompt_hash": "",
@@ -663,13 +764,14 @@ def cmd_run(args: argparse.Namespace) -> int:
                 records.append(record)
 
     results_path = run_dir / "results.jsonl"
-    with results_path.open("w", encoding="utf-8") as f:
+    with results_path.open("w", encoding="utf-8", newline="\n") as f:
         for row in records:
             f.write(json.dumps(row, sort_keys=True) + "\n")
 
     summary = compute_summary(records)
     write_summary(run_dir / "summary.json", summary)
     write_report(run_dir / "report.md", records, summary)
+    write_manifest(run_dir, records, summary, require_record_artifacts=True)
 
     print(
         json.dumps(
@@ -686,18 +788,57 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"missing {results_path}", file=sys.stderr)
         return 2
 
-    records: list[dict[str, Any]] = []
-    with results_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            records.append(json.loads(line))
+    try:
+        records = load_results_jsonl(results_path)
+        summary = compute_summary(records)
+        validate_manifest_run_scope(run_dir, records)
+        write_summary(run_dir / "summary.json", summary)
+        write_report(run_dir / "report.md", records, summary)
+        manifest = write_manifest(run_dir, records, summary)
+    except ResultError as exc:
+        print(f"result error: {exc}", file=sys.stderr)
+        return 2
 
-    summary = compute_summary(records)
-    write_summary(run_dir / "summary.json", summary)
-    write_report(run_dir / "report.md", records, summary)
-    print(json.dumps({"run_dir": str(run_dir), "records": len(records)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "run_dir": str(run_dir),
+                "records": len(records),
+                "artifacts": len(manifest["artifacts"]),
+                "missing_record_artifacts": len(
+                    manifest.get("missing_record_artifacts", [])
+                ),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def cmd_verify_manifest(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    try:
+        manifest = verify_manifest(
+            run_dir,
+            allow_missing_record_artifacts=args.allow_missing_record_artifacts,
+            allow_extra_artifacts=args.allow_extra_artifacts,
+        )
+    except ResultError as exc:
+        print(f"manifest error: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "run_dir": str(run_dir),
+                "artifacts": len(manifest["artifacts"]),
+                "missing_record_artifacts": len(
+                    manifest.get("missing_record_artifacts", [])
+                ),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -879,6 +1020,23 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report")
     report.add_argument("--run-dir", required=True)
     report.set_defaults(func=cmd_report)
+
+    verify_manifest_parser = sub.add_parser("verify-manifest")
+    verify_manifest_parser.add_argument("--run-dir", required=True)
+    verify_manifest_parser.add_argument(
+        "--allow-missing-record-artifacts",
+        action="store_true",
+        help=(
+            "Allow manifests produced from partial archived results where "
+            "referenced rendered/log artifacts are absent."
+        ),
+    )
+    verify_manifest_parser.add_argument(
+        "--allow-extra-artifacts",
+        action="store_true",
+        help="Allow files in the run directory that are not listed in the manifest.",
+    )
+    verify_manifest_parser.set_defaults(func=cmd_verify_manifest)
 
     audit = sub.add_parser("audit")
     audit.add_argument("--dataset-dir", default=str(default_dataset_dir()))

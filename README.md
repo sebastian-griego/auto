@@ -23,8 +23,15 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 - Provider/API failures are bucketed as `provider_error` (separate from Lean failure buckets).
 - Transient provider failures are retried and not cached as sticky provider errors.
 - Summary semantic rates exclude `provider_error` attempts from denominators.
+- Run reports include `manifest.json` with SHA-256 hashes for `results.jsonl`,
+  `summary.json`, `report.md`, and any present rendered/log artifacts. New
+  schema-v2 manifests also record an `artifact_count`; verification still
+  accepts legacy schema-v1 manifests that predate that count.
 - Prompt construction is versioned (`--prompt-version`, default `v1.1.0`) and recorded in run artifacts.
 - For frozen v1 reproduction, pass `--prompt-version v1.0.0`.
+- Rendered/log artifact filenames are normalized from item, provider, and model
+  identifiers so original IDs remain in JSON records without becoming filesystem
+  paths.
 
 ## Quickstart
 ```bash
@@ -49,7 +56,20 @@ Run a tiny mock eval:
 ```bash
 cd harness
 python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
+python -m autoform_eval.cli verify-manifest --run-dir ../results/runs/<run_id>
 ```
+
+`run` validates model specs, prompt version, and positive `--k` before creating
+the run directory. Duplicate `provider:model` entries are rejected because they
+would otherwise create duplicate attempt rows.
+
+`verify-manifest` is strict by default: every non-manifest file under the run
+directory must be listed and hashed, and every rendered/log artifact referenced
+by `results.jsonl` must be accounted for. It also reloads `results.jsonl` to
+check row validity, run ID scope, manifest metadata types, the recorded attempt
+count, and `summary.json` consistency. Use
+`--allow-missing-record-artifacts` or `--allow-extra-artifacts` only when
+auditing older partial artifacts.
 
 Run a fast dataset-wide benchmark health audit without Lean:
 ```bash
