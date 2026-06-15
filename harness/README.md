@@ -14,6 +14,7 @@ Key subcommands:
 
 Useful options:
 - `run --k <N>` for Pass@k attempts per item/model.
+- `run --models provider:model[,provider:model...]`; duplicate model specs are rejected.
 - `run --save-prompt-text` to persist prompt text in records.
 - `run --prompt-version <version>` to pin benchmark prompt text (default `v1.0.0`).
 - `run --provider-retries <N> --provider-retry-backoff-s <seconds>` to retry transient provider failures.

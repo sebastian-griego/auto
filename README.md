@@ -56,6 +56,10 @@ python -m autoform_eval.cli run --split pilot --models openai:mock --mock --k 1
 python -m autoform_eval.cli verify-manifest --run-dir ../results/runs/<run_id>
 ```
 
+`run` validates model specs, prompt version, and positive `--k` before creating
+the run directory. Duplicate `provider:model` entries are rejected because they
+would otherwise create duplicate attempt rows.
+
 `verify-manifest` is strict by default: every non-manifest file under the run
 directory must be listed and hashed, and every rendered/log artifact referenced
 by `results.jsonl` must be accounted for. It also reloads `results.jsonl` to

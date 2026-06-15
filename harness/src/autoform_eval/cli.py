@@ -139,6 +139,31 @@ def _prepare_run_dir(results_root: Path, requested_run_id: str = "") -> tuple[st
     )
 
 
+def _parse_models(raw: str) -> list[tuple[str, str]]:
+    models: list[tuple[str, str]] = []
+    first_positions: dict[tuple[str, str], int] = {}
+    for position, token in enumerate(raw.split(","), 1):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" not in token:
+            raise ValueError(f"invalid model token {token!r}, expected provider:model")
+        provider, model = (part.strip() for part in token.split(":", 1))
+        if not provider or not model:
+            raise ValueError(f"invalid model token {token!r}, expected provider:model")
+        key = (provider.lower(), model)
+        if key in first_positions:
+            raise ValueError(
+                f"duplicate model token {provider}:{model} at position {position}; "
+                f"first seen at position {first_positions[key]}"
+            )
+        first_positions[key] = position
+        models.append((provider, model))
+    if not models:
+        raise ValueError("at least one model must be specified")
+    return models
+
+
 def _adapter_for(provider: str):
     provider = provider.lower().strip()
     if provider == "openai":
@@ -610,25 +635,27 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        if args.k < 1:
+            raise ValueError("--k must be a positive integer")
+        models = _parse_models(args.models)
+    except ValueError as exc:
+        print(f"run error: {exc}", file=sys.stderr)
+        return 2
+
+    if not is_supported_prompt_version(args.prompt_version):
+        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
+        print(
+            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
         run_id, run_dir = _prepare_run_dir(results_root, args.run_id)
     except ValueError as exc:
         print(f"run error: {exc}", file=sys.stderr)
         return 2
     cache = JsonCache(cache_root)
-
-    models: list[tuple[str, str]] = []
-    for token in args.models.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        if ":" not in token:
-            print(
-                f"invalid model token '{token}', expected provider:model",
-                file=sys.stderr,
-            )
-            return 2
-        provider, model = token.split(":", 1)
-        models.append((provider.strip(), model.strip()))
 
     records: list[dict[str, Any]] = []
     toolchain = (
@@ -639,13 +666,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     mathlib_rev = args.mathlib_rev.strip() if isinstance(args.mathlib_rev, str) else ""
     if not mathlib_rev or mathlib_rev == "unknown":
         mathlib_rev = _read_mathlib_rev(lean_dir)
-    if not is_supported_prompt_version(args.prompt_version):
-        supported = ", ".join(SUPPORTED_PROMPT_VERSIONS)
-        print(
-            f"unsupported prompt version '{args.prompt_version}' (supported: {supported})",
-            file=sys.stderr,
-        )
-        return 2
 
     for item in items:
         for provider, model in models:

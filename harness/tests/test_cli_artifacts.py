@@ -2,7 +2,13 @@ import json
 from pathlib import Path
 
 from autoform_eval.cache import JsonCache
-from autoform_eval.cli import _prepare_run_dir, _run_attempt, _write_run_text, main
+from autoform_eval.cli import (
+    _parse_models,
+    _prepare_run_dir,
+    _run_attempt,
+    _write_run_text,
+    main,
+)
 from autoform_eval.types import DatasetItem, ProvenanceSpec, SemanticSpec
 
 
@@ -47,6 +53,57 @@ def test_prepare_run_dir_rejects_unsafe_run_id(tmp_path: Path):
     else:
         raise AssertionError("expected unsafe run_id to fail")
     assert not (tmp_path / "results").exists()
+
+
+def test_parse_models_rejects_duplicate_model_specs():
+    try:
+        _parse_models("openai:mock, OpenAI:mock")
+    except ValueError as exc:
+        message = str(exc)
+        assert "duplicate model token OpenAI:mock" in message
+        assert "position 2" in message
+        assert "first seen at position 1" in message
+    else:
+        raise AssertionError("expected duplicate model spec to fail")
+
+
+def test_parse_models_rejects_empty_provider_or_model():
+    for raw in (":mock", "openai:"):
+        try:
+            _parse_models(raw)
+        except ValueError as exc:
+            assert "expected provider:model" in str(exc)
+        else:
+            raise AssertionError(f"expected invalid model spec to fail: {raw}")
+
+
+def test_run_rejects_invalid_config_before_creating_run_dir(tmp_path: Path):
+    dataset_dir = tmp_path / "dataset"
+    _write_dataset_split(dataset_dir)
+    results_root = tmp_path / "results"
+
+    cases = [
+        ["--models", "openai:mock,openai:mock"],
+        ["--models", "openai:mock", "--k", "0"],
+        ["--models", "openai:mock", "--prompt-version", "bad-version"],
+    ]
+    for extra_args in cases:
+        exit_code = main(
+            [
+                "run",
+                "--split",
+                "pilot",
+                "--dataset-dir",
+                str(dataset_dir),
+                "--results-root",
+                str(results_root),
+                "--mock",
+                *extra_args,
+            ]
+        )
+
+        assert exit_code == 2
+        assert not results_root.exists()
 
 
 def test_run_attempt_records_test1_runner_exception_artifacts(
@@ -149,6 +206,36 @@ def _write_templates(lean_dir: Path) -> None:
                 "",
             ]
         ),
+        encoding="utf-8",
+    )
+
+
+def _write_dataset_split(dataset_dir: Path) -> None:
+    dataset_dir.mkdir(parents=True)
+    row = {
+        "schema_version": "1.0",
+        "checker_version": "1.0",
+        "id": "unit",
+        "nl": "A simple proposition.",
+        "imports": ["Mathlib"],
+        "context": "",
+        "expected": "True",
+        "family": "ring_identity",
+        "tier": "A",
+        "split": "pilot",
+        "tags": [],
+        "semantic": {
+            "kind": "normalized_ref",
+            "check": "ring_identity_norm",
+        },
+        "provenance": {
+            "source_kind": "other",
+            "source_ref": "test",
+            "license": "CC0-1.0",
+        },
+    }
+    (dataset_dir / "pilot.jsonl").write_text(
+        json.dumps(row, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
