@@ -23,4 +23,5 @@ Notes:
 - Transient provider errors are retried and are not cached as sticky failures.
 - Summary rates are computed on evaluable attempts (provider errors excluded from denominators).
 - `report` validates saved `results.jsonl` artifacts and rejects malformed buckets,
-  non-boolean pass flags, invalid attempt indexes, and duplicate attempt rows.
+  non-boolean pass flags, impossible pass-state combinations, invalid attempt
+  indexes, malformed optional artifact fields, and duplicate attempt rows.

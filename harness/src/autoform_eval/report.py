@@ -20,6 +20,30 @@ REQUIRED_STR_FIELDS = (
     "bucket",
 )
 REQUIRED_BOOL_FIELDS = ("test1_pass", "test2_pass")
+OPTIONAL_STR_FIELDS = (
+    "candidate_raw",
+    "candidate_hash",
+    "prompt_hash",
+    "prompt_version",
+    "fragment_key",
+    "lean_toolchain",
+    "mathlib_rev",
+    "stdout_excerpt",
+    "stderr_excerpt",
+    "prompt_text",
+    "test1_rendered_path",
+    "test2_rendered_path",
+    "test1_stdout_log_path",
+    "test1_stderr_log_path",
+    "test2_stdout_log_path",
+    "test2_stderr_log_path",
+)
+OPTIONAL_NONNEGATIVE_INT_FIELDS = (
+    "test1_elapsed_ms",
+    "test2_elapsed_ms",
+    "test1_heartbeats",
+    "test2_heartbeats",
+)
 
 
 class ResultError(ValueError):
@@ -89,6 +113,19 @@ def validate_result_records(
         ):
             raise ResultError(f"{where}: 'shape_pass' must be a boolean or null")
 
+        for field in OPTIONAL_STR_FIELDS:
+            if field in row and not isinstance(row[field], str):
+                raise ResultError(f"{where}: '{field}' must be a string")
+
+        for field in OPTIONAL_NONNEGATIVE_INT_FIELDS:
+            value = row.get(field)
+            if value is None:
+                continue
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ResultError(
+                    f"{where}: '{field}' must be a non-negative integer"
+                )
+
         attempt_index = row.get("attempt_index")
         if (
             not isinstance(attempt_index, int)
@@ -101,6 +138,10 @@ def validate_result_records(
             raise ResultError(
                 f"{where}: pass bucket requires test1_pass and test2_pass"
             )
+        if row["test2_pass"] and not row["test1_pass"]:
+            raise ResultError(f"{where}: test2_pass requires test1_pass")
+        if row["test2_pass"] and bucket != "pass":
+            raise ResultError(f"{where}: test2_pass requires pass bucket")
         if bucket == "provider_error" and (row["test1_pass"] or row["test2_pass"]):
             raise ResultError(
                 f"{where}: provider_error bucket cannot pass Lean checks"

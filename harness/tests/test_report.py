@@ -48,6 +48,35 @@ def test_compute_summary_rejects_invalid_result_fields():
         compute_summary([bad_pass])
 
 
+def test_compute_summary_rejects_impossible_pass_flags():
+    bad_order = _record("a", bucket="semantic_fail", test2_pass=True)
+    with pytest.raises(ResultError, match="test2_pass requires test1_pass"):
+        compute_summary([bad_order])
+
+    bad_bucket = _record(
+        "a", bucket="semantic_fail", test1_pass=True, test2_pass=True
+    )
+    with pytest.raises(ResultError, match="test2_pass requires pass bucket"):
+        compute_summary([bad_bucket])
+
+
+def test_compute_summary_rejects_malformed_artifact_fields():
+    negative_elapsed = _record("a")
+    negative_elapsed["test1_elapsed_ms"] = -1
+    with pytest.raises(ResultError, match="test1_elapsed_ms"):
+        compute_summary([negative_elapsed])
+
+    bool_heartbeats = _record("a")
+    bool_heartbeats["test2_heartbeats"] = True
+    with pytest.raises(ResultError, match="test2_heartbeats"):
+        compute_summary([bool_heartbeats])
+
+    bad_hash = _record("a")
+    bad_hash["candidate_hash"] = {"sha256": "abc"}
+    with pytest.raises(ResultError, match="candidate_hash"):
+        compute_summary([bad_hash])
+
+
 def test_load_results_jsonl_reports_line_numbers(tmp_path: Path):
     path = tmp_path / "results.jsonl"
     path.write_text(json.dumps(_record("a")) + "\n[]\n", encoding="utf-8")
