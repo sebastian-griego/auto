@@ -27,8 +27,10 @@ Notes:
   non-boolean pass flags, impossible pass-state combinations, invalid attempt
   indexes, malformed optional artifact fields, and duplicate attempt rows.
 - `run` and `report` write `manifest.json` with SHA-256 hashes for core run
-  artifacts and any referenced rendered/log files that are present. `run`
-  requires referenced rendered/log files to exist before the manifest is written.
+  artifacts and any referenced rendered/log files that are present. New
+  schema-v2 manifests record an `artifact_count`; legacy schema-v1 manifests
+  without that count remain verifiable. `run` requires referenced rendered/log
+  files to exist before the manifest is written.
 - `verify-manifest` is strict by default: it rejects modified, missing, or
   unlisted files in a run directory, and it fails when `manifest.json` records
   missing rendered/log artifacts. It reloads `results.jsonl` to validate row

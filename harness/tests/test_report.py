@@ -204,6 +204,7 @@ def test_write_manifest_hashes_core_and_record_artifacts(tmp_path: Path):
     assert b"\r\n" not in manifest_bytes
 
     paths = {entry["path"] for entry in manifest["artifacts"]}
+    assert manifest["schema_version"] == 2
     assert manifest["artifact_count"] == len(manifest["artifacts"])
     assert {"results.jsonl", "summary.json", "report.md"}.issubset(paths)
     assert "rendered/a.test1.lean" in paths
@@ -360,6 +361,37 @@ def test_verify_manifest_rejects_artifact_count_mismatch(tmp_path: Path):
 
     with pytest.raises(ResultError, match="does not match"):
         verify_manifest(run_dir)
+
+
+def test_verify_manifest_rejects_schema_v2_without_artifact_count(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["artifact_count"]
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="artifact_count"):
+        verify_manifest(run_dir)
+
+
+def test_verify_manifest_accepts_legacy_v1_without_artifact_count(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 1
+    del manifest["artifact_count"]
+    _write_manifest_json(manifest_path, manifest)
+
+    verified = verify_manifest(run_dir)
+
+    assert verified["schema_version"] == 1
+    assert "artifact_count" not in verified
 
 
 def test_verify_manifest_rejects_boolean_schema_version(tmp_path: Path):

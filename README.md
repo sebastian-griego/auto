@@ -24,7 +24,9 @@ This repository evaluates NL -> Lean 4 `Prop` autoformalization quality with a t
 - Transient provider failures are retried and not cached as sticky provider errors.
 - Summary semantic rates exclude `provider_error` attempts from denominators.
 - Run reports include `manifest.json` with SHA-256 hashes for `results.jsonl`,
-  `summary.json`, `report.md`, and any present rendered/log artifacts.
+  `summary.json`, `report.md`, and any present rendered/log artifacts. New
+  schema-v2 manifests also record an `artifact_count`; verification still
+  accepts legacy schema-v1 manifests that predate that count.
 - Prompt construction is versioned (`--prompt-version`, default `v1.1.0`) and recorded in run artifacts.
 - For frozen v1 reproduction, pass `--prompt-version v1.0.0`.
 

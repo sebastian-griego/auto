@@ -9,7 +9,12 @@ from typing import Any, get_args
 from .types import Bucket
 
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+LEGACY_MANIFEST_SCHEMA_VERSION = 1
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {
+    LEGACY_MANIFEST_SCHEMA_VERSION,
+    MANIFEST_SCHEMA_VERSION,
+}
 MANIFEST_NAME = "manifest.json"
 CORE_ARTIFACT_PATHS = ("results.jsonl", "summary.json", "report.md")
 VALID_BUCKETS = set(get_args(Bucket))
@@ -631,7 +636,7 @@ def verify_manifest(
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
-        or schema_version != MANIFEST_SCHEMA_VERSION
+        or schema_version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS
     ):
         raise ResultError(
             f"{manifest_path}: unsupported schema_version {schema_version!r}"
@@ -651,11 +656,12 @@ def verify_manifest(
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise ResultError(f"{manifest_path}: artifacts must be a non-empty list")
-    _validate_artifact_count(
-        manifest.get("artifact_count"),
-        expected=len(artifacts),
-        where=str(manifest_path),
-    )
+    if schema_version >= MANIFEST_SCHEMA_VERSION or "artifact_count" in manifest:
+        _validate_artifact_count(
+            manifest.get("artifact_count"),
+            expected=len(artifacts),
+            where=str(manifest_path),
+        )
 
     seen_paths: set[str] = set()
     for idx, entry in enumerate(artifacts, 1):
