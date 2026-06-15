@@ -1,5 +1,9 @@
 # Dataset Schema v1.0
 
+Split files are JSONL encoded as UTF-8, with or without a BOM. Each row must
+have a unique `id` within its split file; duplicate IDs are rejected before
+validation or evaluation runs proceed.
+
 Required fields per JSONL row:
 - `schema_version` (string)
 - `checker_version` (string)
@@ -18,13 +22,13 @@ Required nested fields:
 - `semantic.check` (string)
 
 Optional nested fields:
-- `semantic.extra` (string)
+- `semantic.extra` (string when present)
 
 Required provenance fields:
-- `provenance.source_kind` (`mathlib_decl`, `textbook`, `competition`, `other`)
+- `provenance.source_kind` (`mathlib_decl`, `textbook`, `competition`, `assistant_generated`, `other`)
 - `provenance.source_ref` (string)
 - `provenance.license` (string)
 
 Optional fields:
-- `provenance.notes` (string)
-- `forbidden_ok` (list[string])
+- `provenance.notes` (string when present)
+- `forbidden_ok` (list[string] when present)
