@@ -273,6 +273,18 @@ def test_write_manifest_rejects_stale_summary_metrics(tmp_path: Path):
     assert not (run_dir / "manifest.json").exists()
 
 
+def test_write_manifest_requires_core_run_artifacts(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    records = [_record("a")]
+    summary = compute_summary(records)
+
+    with pytest.raises(ResultError, match="missing core run artifacts"):
+        write_manifest(run_dir, records, summary)
+
+    assert not (run_dir / "manifest.json").exists()
+
+
 def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -297,6 +309,26 @@ def test_verify_manifest_rejects_mismatched_manifest_run_id(tmp_path: Path):
 
     with pytest.raises(ResultError, match="does not match run directory"):
         verify_manifest(run_dir)
+
+
+def test_verify_manifest_requires_core_run_artifact_entries(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_run_bundle(run_dir, [_record("a")])
+
+    summary_path = run_dir / "summary.json"
+    summary_path.unlink()
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"] = [
+        entry
+        for entry in manifest["artifacts"]
+        if entry["path"] != "summary.json"
+    ]
+    _write_manifest_json(manifest_path, manifest)
+
+    with pytest.raises(ResultError, match="missing core run artifacts"):
+        verify_manifest(run_dir, allow_extra_artifacts=True)
 
 
 def test_verify_manifest_rejects_boolean_schema_version(tmp_path: Path):

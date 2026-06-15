@@ -134,6 +134,18 @@ def _summary_total_attempts(
     return total_attempts
 
 
+def _missing_core_artifact_paths(paths: set[str]) -> list[str]:
+    return [rel_path for rel_path in CORE_ARTIFACT_PATHS if rel_path not in paths]
+
+
+def _require_core_artifact_paths(paths: set[str], *, where: str) -> None:
+    missing = _missing_core_artifact_paths(paths)
+    if missing:
+        raise ResultError(
+            f"{where}: missing core run artifacts: {', '.join(missing)}"
+        )
+
+
 def _validate_summary_matches_records(
     summary: Any, records: list[dict[str, Any]], *, where: str
 ) -> None:
@@ -535,6 +547,7 @@ def write_manifest(
     for rel_path in CORE_ARTIFACT_PATHS:
         if _path_in_run_dir(run_dir, rel_path).exists():
             artifact_paths.add(rel_path)
+    _require_core_artifact_paths(artifact_paths, where=str(run_dir))
 
     missing_record_artifacts: list[str] = []
     for rel_path in _record_artifact_paths(records):
@@ -668,6 +681,8 @@ def verify_manifest(
         actual_hash = _sha256_file(path)
         if actual_hash != expected_hash:
             raise ResultError(f"{where}: sha256 mismatch for '{rel_path}'")
+
+    _require_core_artifact_paths(seen_paths, where=str(manifest_path))
 
     missing = manifest.get("missing_record_artifacts", [])
     if not isinstance(missing, list):
