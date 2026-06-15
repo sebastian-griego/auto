@@ -67,6 +67,8 @@ _TRANSIENT_PROVIDER_ERROR_HINTS = (
     "too many requests",
     "try again",
 )
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_AUTO_RUN_ID_COLLISIONS = 1000
 
 
 def _canonical_text(text: str) -> str:
@@ -96,6 +98,44 @@ def _read_mathlib_rev(lean_dir: Path) -> str:
 
 def _mk_run_id() -> str:
     return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+
+
+def _validate_run_id(run_id: str) -> str:
+    run_id = run_id.strip()
+    if not run_id:
+        raise ValueError("run_id must be non-empty")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise ValueError(
+            "run_id must start with a letter or digit and contain only "
+            "letters, digits, '.', '_', or '-'"
+        )
+    return run_id
+
+
+def _prepare_run_dir(results_root: Path, requested_run_id: str = "") -> tuple[str, Path]:
+    if requested_run_id:
+        run_id = _validate_run_id(requested_run_id)
+        results_root.mkdir(parents=True, exist_ok=True)
+        run_dir = results_root / run_id
+        try:
+            run_dir.mkdir()
+        except FileExistsError as exc:
+            raise ValueError(f"run_id already exists: {run_id}") from exc
+        return run_id, run_dir
+
+    results_root.mkdir(parents=True, exist_ok=True)
+    base_run_id = _validate_run_id(_mk_run_id())
+    for suffix in range(_MAX_AUTO_RUN_ID_COLLISIONS):
+        run_id = base_run_id if suffix == 0 else f"{base_run_id}_{suffix:02d}"
+        run_dir = results_root / run_id
+        try:
+            run_dir.mkdir()
+        except FileExistsError:
+            continue
+        return run_id, run_dir
+    raise ValueError(
+        f"could not allocate a unique run_id for timestamp {base_run_id}"
+    )
 
 
 def _adapter_for(provider: str):
@@ -568,9 +608,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"dataset error: {exc}", file=sys.stderr)
         return 2
 
-    run_id = args.run_id or _mk_run_id()
-    run_dir = results_root / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        run_id, run_dir = _prepare_run_dir(results_root, args.run_id)
+    except ValueError as exc:
+        print(f"run error: {exc}", file=sys.stderr)
+        return 2
     cache = JsonCache(cache_root)
 
     models: list[tuple[str, str]] = []

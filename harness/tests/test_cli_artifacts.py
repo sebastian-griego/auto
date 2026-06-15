@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from autoform_eval.cache import JsonCache
-from autoform_eval.cli import _run_attempt, _write_run_text
+from autoform_eval.cli import _prepare_run_dir, _run_attempt, _write_run_text
 from autoform_eval.types import DatasetItem, ProvenanceSpec, SemanticSpec
 
 
@@ -11,6 +11,41 @@ def test_write_run_text_canonicalizes_newlines(tmp_path: Path):
     _write_run_text(path, "alpha\r\nbeta\rgamma\n")
 
     assert path.read_bytes() == b"alpha\nbeta\ngamma\n"
+
+
+def test_prepare_run_dir_suffixes_automatic_timestamp_collisions(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setattr("autoform_eval.cli._mk_run_id", lambda: "20260615_120000")
+    first = tmp_path / "results" / "20260615_120000"
+    first.mkdir(parents=True)
+
+    run_id, run_dir = _prepare_run_dir(tmp_path / "results")
+
+    assert run_id == "20260615_120000_01"
+    assert run_dir == tmp_path / "results" / "20260615_120000_01"
+    assert run_dir.is_dir()
+
+
+def test_prepare_run_dir_rejects_existing_explicit_run_id(tmp_path: Path):
+    (tmp_path / "results" / "paper").mkdir(parents=True)
+
+    try:
+        _prepare_run_dir(tmp_path / "results", "paper")
+    except ValueError as exc:
+        assert "run_id already exists: paper" in str(exc)
+    else:
+        raise AssertionError("expected explicit run_id collision to fail")
+
+
+def test_prepare_run_dir_rejects_unsafe_run_id(tmp_path: Path):
+    try:
+        _prepare_run_dir(tmp_path / "results", "../escape")
+    except ValueError as exc:
+        assert "run_id must start with" in str(exc)
+    else:
+        raise AssertionError("expected unsafe run_id to fail")
+    assert not (tmp_path / "results").exists()
 
 
 def test_run_attempt_records_test1_runner_exception_artifacts(
